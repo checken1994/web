@@ -6,7 +6,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard } from "./db";
+import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, cancelControlSession, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, createArtifactFromBytes, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard } from "./db";
 import { invokeLLM, listLLMModels } from "./_core/llm";
 import { agentCapabilities, scheduledJobs } from "../drizzle/schema";
 import { createHeartbeatJob, deleteHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
@@ -67,6 +67,13 @@ export const appRouter = router({
       }
     }),
     history: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).query(({ ctx, input }) => listSessionMessages(ownerId(ctx), input.sessionId)),
+    cancel: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const id = ownerId(ctx);
+      const result = await cancelControlSession(id, input.sessionId);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
+      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "session.cancel" : "session.cancel.noop", targetType: "session", targetId: String(input.sessionId), status: result.changed ? "completed" : "unknown", metadata: { previousOrCurrentStatus: result.status } });
+      return result;
+    }),
   }),
   agents: router({
     list: protectedProcedure.query(({ ctx }) => listAgents(ownerId(ctx))),
@@ -98,14 +105,34 @@ export const appRouter = router({
   }),
   artifacts: router({
     list: protectedProcedure.query(({ ctx }) => listArtifacts(ownerId(ctx))),
+    register: protectedProcedure.input(z.object({ name: z.string().trim().regex(/^[A-Za-z0-9._-]{1,220}$/), mimeType: z.string().trim().min(1).max(120), base64: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(11_200_000), sessionId: z.number().int().positive().optional(), provenance: z.unknown().optional() })).mutation(async ({ ctx, input }) => {
+      const id = ownerId(ctx);
+      try {
+        const bytes = Buffer.from(input.base64, "base64");
+        if (bytes.byteLength > 8 * 1024 * 1024) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "Artifact exceeds the 8 MiB limit" });
+        const result = await createArtifactFromBytes({ ownerId: id, sessionId: input.sessionId, name: input.name, mimeType: input.mimeType, bytes, provenance: input.provenance });
+        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", targetId: String(result.id), status: "completed", metadata: { sizeBytes: result.sizeBytes, sha256: result.sha256, sessionId: input.sessionId ?? null } });
+        return result;
+      } catch (error) {
+        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Artifact registration failed" });
+      }
+    }),
     access: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const artifact = await getOwnedArtifact(id, input.id);
-      if (!artifact) throw new TRPCError({ code: "NOT_FOUND", message: "Artifact not found" });
-      if (!artifact.storageKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Artifact storage reference is missing" });
-      const url = await storageGetSignedUrl(artifact.storageKey);
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "completed" });
-      return { url, expiresInSeconds: 300 };
+      try {
+        const artifact = await getOwnedArtifact(id, input.id);
+        if (!artifact) throw new TRPCError({ code: "NOT_FOUND", message: "Artifact not found" });
+        if (!artifact.storageKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Artifact storage reference is missing" });
+        const url = await storageGetSignedUrl(artifact.storageKey);
+        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "completed" });
+        return { url, expiresInSeconds: 300 };
+      } catch (error) {
+        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Artifact access failed" });
+      }
     }),
   }),
   jobs: router({

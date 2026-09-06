@@ -42,21 +42,30 @@ async function startServer() {
   registerOAuthRoutes(app);
   app.post("/api/scheduled/control-plane-job", async (req, res) => {
     const startedAt = new Date();
+    let db: Awaited<ReturnType<typeof getDb>> = null;
+    let jobId: number | undefined;
+    let runId: number | undefined;
     try {
       const user = await sdk.authenticateRequest(req);
       if (!user.isCron || !user.taskUid) return res.status(403).json({ error: "cron-only" });
-      const db = await getDb();
+      db = await getDb();
       if (!db) return res.status(503).json({ error: "database-unavailable" });
       const rows = await db.select().from(scheduledJobs).where(eq(scheduledJobs.scheduleCronTaskUid, user.taskUid)).limit(1);
       const job = rows[0];
       if (!job) return res.json({ ok: true, skipped: "orphan" });
+      jobId = job.id;
       const run = await db.insert(jobRuns).values({ jobId: job.id, ownerId: job.ownerId, status: "running", startedAt });
-      const runId = Number(run[0].insertId);
+      runId = Number(run[0].insertId);
       await db.update(jobRuns).set({ status: "success", finishedAt: new Date() }).where(eq(jobRuns.id, runId));
       await db.update(scheduledJobs).set({ lastRunAt: new Date(), lastStatus: "success", lastError: null }).where(eq(scheduledJobs.id, job.id));
       return res.json({ ok: true, taskUid: user.taskUid, runId });
     } catch (error) {
-      return res.status(500).json({ error: error instanceof Error ? error.message : "unknown", timestamp: new Date().toISOString() });
+      const safeMessage = "scheduled-job-failed";
+      if (db && runId && jobId) {
+        await db.update(jobRuns).set({ status: "failed", finishedAt: new Date(), error: safeMessage }).where(eq(jobRuns.id, runId)).catch(() => undefined);
+        await db.update(scheduledJobs).set({ lastRunAt: new Date(), lastStatus: "failed", lastError: safeMessage }).where(eq(scheduledJobs.id, jobId)).catch(() => undefined);
+      }
+      return res.status(500).json({ error: safeMessage, timestamp: new Date().toISOString() });
     }
   });
   // tRPC API

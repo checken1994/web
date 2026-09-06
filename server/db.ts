@@ -1,10 +1,12 @@
 import { and, desc, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   agentCapabilities, agents, artifacts, auditActivities, InsertUser, jobRuns, modelRoutes,
   scheduledJobs, sessionMessages, sessions, users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { storagePut } from "./storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -60,6 +62,15 @@ export async function addSessionMessage(ownerId: number, sessionId: number, cont
   return { id: Number(result[0].insertId), sessionId };
 }
 
+export async function cancelControlSession(ownerId: number, sessionId: number) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const current = await db.select({ id: sessions.id, status: sessions.status }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.ownerId, ownerId))).limit(1);
+  if (!current[0]) return null;
+  if (current[0].status !== "queued" && current[0].status !== "running") return { id: sessionId, status: current[0].status, changed: false } as const;
+  await db.update(sessions).set({ status: "cancelled", lastActivityAt: new Date() }).where(and(eq(sessions.id, sessionId), eq(sessions.ownerId, ownerId)));
+  return { id: sessionId, status: "cancelled", changed: true } as const;
+}
+
 export async function addAssistantMessage(ownerId: number, sessionId: number, content: string, status: "completed" | "failed" | "unknown" = "completed") {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const owned = await db.select({ id: sessions.id }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.ownerId, ownerId))).limit(1);
@@ -98,6 +109,31 @@ export async function upsertModelRoute(ownerId: number, displayName: string, mod
 export async function listArtifacts(ownerId: number) {
   const db = await getDb(); if (!db) return [];
   return db.select().from(artifacts).where(eq(artifacts.ownerId, ownerId)).orderBy(desc(artifacts.createdAt)).limit(100);
+}
+
+export async function createArtifactFromBytes(input: {
+  ownerId: number;
+  sessionId?: number;
+  name: string;
+  mimeType: string;
+  bytes: Buffer;
+  provenance?: unknown;
+}) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex");
+  const stored = await storagePut(`${input.ownerId}-artifacts/${input.name}`, input.bytes, input.mimeType);
+  const inserted = await db.insert(artifacts).values({
+    ownerId: input.ownerId,
+    sessionId: input.sessionId,
+    name: input.name,
+    status: "ready",
+    mimeType: input.mimeType,
+    sizeBytes: input.bytes.byteLength,
+    storageKey: stored.key,
+    provenance: input.provenance ?? null,
+    sha256,
+  });
+  return { id: Number(inserted[0].insertId), key: stored.key, sha256, sizeBytes: input.bytes.byteLength };
 }
 
 export async function getOwnedArtifact(ownerId: number, artifactId: number) {

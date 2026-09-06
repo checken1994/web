@@ -42,4 +42,23 @@ describe("control-plane authorization contracts", () => {
     const call = appRouter.createCaller(contextWithUser(null)).sessions.list();
     await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+
+  it("rejects session cancellation without an authenticated user", async () => {
+    const call = appRouter.createCaller(contextWithUser(null)).sessions.cancel({ sessionId: 1 });
+    await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects capability mutation for a non-admin user", async () => {
+    const user = {
+      id: 9, openId: "capability-user", email: "capability@example.com", name: "Capability User", loginMethod: "manus",
+      role: "user" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date(),
+    };
+    const call = appRouter.createCaller(contextWithUser(user)).agents.toggleCapability({ id: 1, enabled: true });
+    await expect(call).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("rejects artifact registration without an authenticated user", async () => {
+    const call = appRouter.createCaller(contextWithUser(null)).artifacts.register({ name: "evidence.txt", mimeType: "text/plain", base64: "ZXZpZGVuY2U=" });
+    await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
 });
