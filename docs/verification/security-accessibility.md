@@ -15,7 +15,7 @@ The dashboard changed its nested content landmarks from nested `<main>` elements
 | Check | Command or observation | Result |
 |---|---|---|
 | Type safety | `pnpm check` | Passed with exit code 0 |
-| Unit/contract tests | `pnpm test` | 3 files, 8 tests passed |
+| Unit/contract tests | `pnpm test` | 3 files, 10 tests passed |
 | Production build | `pnpm build` | Vite and server bundle completed with exit code 0 |
 | Browser secret scan | Literal scan over `client/src`, `client/public`, and `dist/public` | No forbidden secret/token patterns found |
 | Regression guard | `server/frontend.security.test.ts` | Passed; fails closed on provider keys, secret envs, sessionStorage cookie reads, Bearer forwarding, or secret VITE env imports |
@@ -25,4 +25,4 @@ The dashboard changed its nested content landmarks from nested `<main>` elements
 
 ## Missing evidence and limits
 
-An authenticated interactive browser trace was not available for mutation paths in this sandbox. Therefore session submission, model selection, job toggle, artifact signed-URL success, and missing-storage denial remain open interactive checks. No claim is made that the dashboard is production-safe or fully WCAG-conformant; the evidence supports only the scoped checks above.
+An authenticated interactive browser trace was not available for mutation paths in this sandbox. Therefore session submission, model selection, capability/job toggle, artifact signed-URL success, and missing-storage denial remain open interactive checks. Contract coverage now proves unauthenticated denial for session cancel, artifact access, job-run history, capability mutation, artifact registration, plus the oversized artifact rejection path. The scheduled callback records a sanitized `failed` run when execution fails, but a live provider-triggered failure has not been observed. No claim is made that the dashboard is production-safe or fully WCAG-conformant; the evidence supports only the scoped checks above.

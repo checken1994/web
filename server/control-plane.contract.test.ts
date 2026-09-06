@@ -61,4 +61,20 @@ describe("control-plane authorization contracts", () => {
     const call = appRouter.createCaller(contextWithUser(null)).artifacts.register({ name: "evidence.txt", mimeType: "text/plain", base64: "ZXZpZGVuY2U=" });
     await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+
+  it("rejects artifact access and job-run history without an authenticated user", async () => {
+    const caller = appRouter.createCaller(contextWithUser(null));
+    await expect(caller.artifacts.access({ id: 1 })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller.jobs.runs({ jobId: 1 })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects an oversized artifact before storage is called", async () => {
+    const user = {
+      id: 10, openId: "size-user", email: "size@example.com", name: "Size User", loginMethod: "manus",
+      role: "admin" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date(),
+    };
+    const oversized = "A".repeat(11_200_000);
+    const call = appRouter.createCaller(contextWithUser(user)).artifacts.register({ name: "large.bin", mimeType: "application/octet-stream", base64: oversized });
+    await expect(call).rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
+  });
 });
