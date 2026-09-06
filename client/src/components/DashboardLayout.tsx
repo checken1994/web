@@ -21,15 +21,20 @@ import {
 } from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { Activity, Bot, Clock3, FileCheck2, LayoutDashboard, LogOut, MessageSquare, PanelLeft, ShieldCheck, Sparkles } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "Overview", path: "/?section=overview" },
+  { icon: MessageSquare, label: "Sessions", path: "/?section=sessions" },
+  { icon: Bot, label: "Bots & agents", path: "/?section=agents" },
+  { icon: Sparkles, label: "AI models", path: "/?section=models" },
+  { icon: FileCheck2, label: "Artifacts", path: "/?section=artifacts" },
+  { icon: Clock3, label: "Scheduled jobs", path: "/?section=jobs" },
+  { icon: ShieldCheck, label: "Audit activity", path: "/?section=audit" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -110,7 +115,7 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const activeMenuItem = menuItems.find(item => item.path === location) ?? menuItems.find(item => item.path === `${location.split("?")[0]}?section=overview`);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -151,6 +156,7 @@ function DashboardLayoutContent({
 
   return (
     <>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground">Skip to main content</a>
       <div className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
@@ -255,7 +261,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4">{children}</main>
+        <main id="main-content" className="flex-1 p-4">{children}</main>
       </SidebarInset>
     </>
   );

@@ -1,0 +1,69 @@
+# Project TODO
+
+## Core architecture and security
+
+- [x] Read and apply the full-stack, OAuth, LLM integration, file-storage, periodic-updates, automation, and SCP audit guidance before implementation; accessibility/security review remains.
+- [x] Define the server-side domain model for users, roles, sessions, messages, agents, capabilities, model routes, artifacts, scheduled jobs, job runs, and audit activities.
+- [x] Enforce authentication for all dashboard routes and procedures.
+- [x] Enforce owner/admin/user authorization boundaries for remote operations.
+- [x] Ensure agent secrets, API keys, provider credentials, and session tokens never reach the browser.
+- [x] Add server-side validation, audit logging, and safe error responses for all mutations.
+
+## Dashboard and responsive UI
+
+- [x] Build a dark, elegant responsive dashboard inspired by the reference image.
+- [x] Add responsive sidebar/navigation for Sessions, Bots/Agents, AI Models, Artifacts, Scheduled Jobs, and Audit Activity.
+- [x] Add overview cards for active sessions, agents, system health, jobs, and recent activity.
+- [x] Add desktop and mobile layouts with keyboard focus, readable contrast, and empty/loading/error states; visual screenshots passed at 1280px and 375px widths.
+
+## Sessions and messaging
+
+- [x] Implement server-side session list, creation, status, timestamps, and recent activity query; frontend list still uses some reference placeholders.
+- [x] Implement server-side message history and LLM-backed message submission; frontend history wiring remains.
+- [x] Implement request lifecycle states: queued, running, completed, failed, cancelled, and unknown.
+- [ ] Add safe retry/cancel behavior and audit events for submitted commands; cancel flow remains pending.
+
+## Agents, capabilities, and model routing
+
+- [x] Implement server-side agent registry and capability scope queries; full UI wiring remains.
+- [x] Implement admin-only capability enable/disable backend controls with audit events; UI wiring remains.
+- [x] Implement server-side model catalog and safe model selection with persisted owner-scoped model routes.
+- [x] Route AI requests through backend procedures; never send API keys or provider secrets to the frontend.
+- [x] Record model changes and request failure status in audit activity; provider fallback detail remains to be extended.
+
+## Artifacts and evidence
+
+- [x] Add artifact metadata, status, session association, MIME type, size, and created time.
+- [ ] Store file bytes through server-side S3 helpers and expose only authorized access URLs.
+- [x] Implement evidence provenance fields including source session, operation, status, and hash when available.
+- [x] Add safe authorized artifact access procedure returning a time-limited signed URL; UI wiring remains.
+
+## Scheduled jobs
+
+- [x] Read and apply periodic-updates guidance before implementing recurring work.
+- [x] Implement scheduled job records with schedule, enabled state, last run, next run, status, and error summary.
+- [x] Implement enable/disable controls and audit events.
+- [x] Implement job-run history with success, failure, timeout, cancelled, and unknown states.
+- [x] Keep scheduled work compatible with the managed server runtime and avoid assuming an always-on worker.
+
+## Audit and verification
+
+- [x] Implement immutable-style audit activity records for logout, session commands, model changes, capability changes, artifact access, and job changes.
+- [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
+- [x] Add server tests for authorization and secret non-exposure; mutation and lifecycle coverage remains to be extended.
+- [ ] Add frontend verification for desktop/mobile navigation and critical flows; screenshots passed, interactive flow tests remain.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Typecheck, unit tests, and build passed; accessibility/security review remains.
+- [ ] Save the first complete checkpoint only after all completed items are marked [x].
+
+## Follow-up gaps found by verification
+
+- [ ] Implement explicit admin-only/role-based authorization paths and tests for owner versus admin versus user behavior.
+- [ ] Clarify auth design and prove that no readable API keys/provider secrets or session token values are exposed to frontend JavaScript.
+- [ ] Add consistent sanitized error handling and audit coverage for every mutation, including logout and database/service failures.
+- [ ] Implement real session cancel/unknown lifecycle flows and tests for all declared request states.
+- [ ] Persist and validate selected models server-side and expose only safe catalog fields to the client.
+- [ ] Add actual scheduled-job and capability enable/disable UI controls with frontend verification.
+- [ ] Add job-run list/query endpoints plus failure, timeout, cancelled, and unknown handling and tests.
+- [ ] Add session list/history UI wired to server data instead of static placeholders.
+- [ ] Add artifact metadata/provenance query and authorized preview/download flow.
+- [ ] Complete accessibility, responsive, security and frontend critical-flow verification.
