@@ -21,7 +21,7 @@
 - [x] Implement server-side session list, creation, status, timestamps, and recent activity query; frontend list is wired to server data with explicit empty/error states.
 - [x] Implement server-side message history and LLM-backed message submission; frontend history is wired with selection and loading/error/empty states.
 - [x] Implement request lifecycle states: queued, running, completed, failed, cancelled, and unknown.
-- [ ] Add safe retry behavior; session cancel flow and audit events are implemented and authorization-tested, but full runtime lifecycle verification remains.
+- [x] Add safe retry behavior for the latest failed command; retry reuses the latest user message only when the latest assistant result is failed, via the existing server-side send procedure. Full runtime lifecycle verification remains pending.
 
 ## Agents, capabilities, and model routing
 
@@ -51,8 +51,8 @@
 - [x] Implement immutable-style audit activity records for logout, session commands, model changes, capability changes, artifact access, and job changes.
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression coverage added, mutation and lifecycle coverage remains to be extended.
-- [ ] Add frontend verification for desktop/mobile navigation and critical flows; desktop/mobile screenshots and full verification passed, but interactive critical-flow evidence remains.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Typecheck, unit tests, build, browser-surface scan, regression test, landmark/focus/reduced-motion review passed; automated accessibility and interactive security checks remain.
+- [ ] Add frontend verification for desktop/mobile navigation and critical flows; screenshots, restart, typecheck, tests and build passed, but authenticated interactive critical-flow evidence remains.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest typecheck/build passed; latest unit suite is 3 files/10 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
 - [ ] Save the first complete checkpoint only after all completed items are marked [x].
 
 ## Follow-up gaps found by verification
@@ -62,11 +62,11 @@
 - [ ] Add consistent sanitized error handling and audit coverage for every mutation, including logout and database/service failures.
 - [ ] Implement and verify all session cancel/unknown lifecycle states; cancel procedure, UI action, audit events and authorization tests exist, full state-matrix tests remain.
 - [ ] Persist and validate selected models server-side and expose only safe catalog fields to the client.
-- [ ] Add actual scheduled-job and capability enable/disable UI controls with frontend verification; controls are implemented, interactive verification remains.
+- [ ] Add actual scheduled-job and capability enable/disable UI controls with frontend verification; controls are implemented and source-verified, interactive verification remains.
 - [x] Add job-run list/query endpoint and UI for failure, timeout, cancelled, and unknown records; populated runtime/test fixtures remain unavailable for full status-matrix verification.
 - [x] Add session list UI wired to server data instead of static placeholders.
 - [x] Add real session detail/history UI wired to trpc.sessions.history with selection, empty/error/loading states.
 - [x] Add artifact provenance rendering and explicit Preview/Download actions with query/access loading and error states.
 - [ ] Verify artifact metadata query and signed URL access interactively with authorized and missing-storage cases.
 - [ ] Complete accessibility, responsive, security and frontend critical-flow verification; landmark/focus/reduced-motion and responsive review passed, automated accessibility and interactive checks remain.
-- [ ] Run actual desktop and 375px mobile screenshot checks plus interactive session submit, model select, artifact open, and job toggle checks; desktop/mobile captures passed, interactive checks remain.
+- [ ] Run actual desktop and 375px mobile screenshot checks plus interactive session submit, model select, artifact open, and job toggle checks; desktop/mobile captures passed before and after the JSX fix, interactive checks remain.
