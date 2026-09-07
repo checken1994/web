@@ -48,6 +48,15 @@ describe("control-plane authorization contracts", () => {
     await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
+  it("rejects unknown model selection before persistence", async () => {
+    const user = {
+      id: 11, openId: "model-user", email: "model@example.com", name: "Model User", loginMethod: "manus",
+      role: "admin" as const, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date(),
+    };
+    const call = appRouter.createCaller(contextWithUser(user)).models.select({ model: "definitely-not-in-live-catalog" });
+    await expect(call).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects capability mutation for a non-admin user", async () => {
     const user = {
       id: 9, openId: "capability-user", email: "capability@example.com", name: "Capability User", loginMethod: "manus",

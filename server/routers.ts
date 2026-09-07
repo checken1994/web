@@ -97,6 +97,8 @@ export const appRouter = router({
     select: adminProcedure.input(z.object({ model: z.string().trim().min(1).max(180) })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
       const model = input.model.trim();
+      const catalog = await listLLMModels();
+      if (!catalog.data.some((candidate) => candidate.id === model)) throw new TRPCError({ code: "BAD_REQUEST", message: "Selected model is not available in the server catalog" });
       const provider = model.toLowerCase().includes("gemini") ? "Google" : model.toLowerCase().includes("gpt") ? "OpenAI" : "Manus";
       await upsertModelRoute(id, model, model, provider);
       await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "completed", metadata: { provider } });

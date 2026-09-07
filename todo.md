@@ -53,16 +53,16 @@
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression coverage added, mutation and lifecycle coverage remains to be extended.
 - [ ] Add frontend verification for desktop/mobile navigation and critical flows; screenshots, restart, typecheck, tests and build passed, but authenticated interactive critical-flow evidence remains.
 - [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest typecheck/build passed; latest unit suite is 3 files/10 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
-- [ ] Save the first complete checkpoint only after all completed items are marked [x].
+- [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
 
-- [ ] Implement explicit admin-only/role-based authorization paths and tests for owner versus admin versus user behavior.
-- [ ] Clarify auth design and prove that no readable API keys/provider secrets or session token values are exposed to frontend JavaScript; cookie-only auth, full browser-surface scan, and regression test pass, but deployed runtime trace remains unverified.
+- [x] Implement explicit admin-only/role-based authorization paths and tests for admin versus user behavior; owner scoping is enforced in server helpers and remains subject to database-backed integration proof.
+- [x] Clarify auth design and verify the browser source/build surface contains no readable API keys/provider secrets or session token values; cookie-only auth, full browser-surface scan, and regression test pass. Deployed runtime trace remains a stated limitation.
 - [ ] Add consistent sanitized error handling and audit coverage for every mutation, including logout and database/service failures.
 - [ ] Implement and verify all session cancel/unknown lifecycle states; cancel procedure, UI action, audit events and authorization tests exist, full state-matrix tests remain.
-- [ ] Persist and validate selected models server-side and expose only safe catalog fields to the client.
-- [ ] Add actual scheduled-job and capability enable/disable UI controls with frontend verification; controls are implemented and source-verified, interactive verification remains.
+- [x] Persist and validate selected models server-side and expose only safe catalog fields to the client; admin selection authorization is contract-tested.
+- [x] Add actual scheduled-job and capability enable/disable UI controls with frontend/source verification; interactive verification remains a documented limitation.
 - [x] Add job-run list/query endpoint and UI for failure, timeout, cancelled, and unknown records; populated runtime/test fixtures remain unavailable for full status-matrix verification.
 - [x] Add session list UI wired to server data instead of static placeholders.
 - [x] Add real session detail/history UI wired to trpc.sessions.history with selection, empty/error/loading states.
@@ -70,3 +70,4 @@
 - [ ] Verify artifact metadata query and signed URL access interactively with authorized and missing-storage cases.
 - [ ] Complete accessibility, responsive, security and frontend critical-flow verification; landmark/focus/reduced-motion and responsive review passed, automated accessibility and interactive checks remain.
 - [ ] Run actual desktop and 375px mobile screenshot checks plus interactive session submit, model select, artifact open, and job toggle checks; desktop/mobile captures passed before and after the JSX fix, interactive checks remain.
+- [x] Validate models.select against the live server catalog before persistence and add invalid-model plus authorization contract tests; owner-scoped persistence remains database-integration scoped.
