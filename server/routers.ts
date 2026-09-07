@@ -41,14 +41,29 @@ export const appRouter = router({
     list: protectedProcedure.query(({ ctx }) => listControlSessions(ownerId(ctx))),
     create: protectedProcedure.input(z.object({ title: titleSchema, selectedModel: z.string().trim().max(180).optional() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const created = await createControlSession(id, input.title, input.selectedModel);
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.create", targetType: "session", targetId: String(created.id), status: "completed", correlationId: created.correlationId });
-      return created;
+      try {
+        const created = await createControlSession(id, input.title, input.selectedModel);
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.create", targetType: "session", targetId: String(created.id), status: "completed", correlationId: created.correlationId });
+        return created;
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.create", targetType: "session", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Session creation failed" });
+      }
     }),
     send: protectedProcedure.input(z.object({ sessionId: z.number().int().positive(), content: z.string().trim().min(1).max(12000), model: z.string().trim().max(180).optional() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const result = await addSessionMessage(id, input.sessionId, input.content);
-      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
+      let result: Awaited<ReturnType<typeof addSessionMessage>>;
+      try {
+        result = await addSessionMessage(id, input.sessionId, input.content);
+      } catch {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.submit", targetType: "session", targetId: String(input.sessionId), status: "failed", metadata: { reason: "database-failure" } });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Session command could not be submitted" });
+      }
+      if (!result) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.submit", targetType: "session", targetId: String(input.sessionId), status: "failed", metadata: { reason: "session-not-found" } });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
+      }
       await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.submit", targetType: "session", targetId: String(input.sessionId), status: "accepted", metadata: { contentLength: input.content.length, requestedModel: input.model ?? null } });
       try {
         const available = await listLLMModels();
@@ -73,10 +88,16 @@ export const appRouter = router({
     history: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).query(({ ctx, input }) => listSessionMessages(ownerId(ctx), input.sessionId)),
     cancel: protectedProcedure.input(z.object({ sessionId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const result = await cancelControlSession(id, input.sessionId);
-      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "session.cancel" : "session.cancel.noop", targetType: "session", targetId: String(input.sessionId), status: result.changed ? "completed" : "unknown", metadata: { previousOrCurrentStatus: result.status } });
-      return result;
+      try {
+        const result = await cancelControlSession(id, input.sessionId);
+        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "session.cancel" : "session.cancel.noop", targetType: "session", targetId: String(input.sessionId), status: result.changed ? "completed" : "unknown", metadata: { previousOrCurrentStatus: result.status } });
+        return result;
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.cancel", targetType: "session", targetId: String(input.sessionId), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Session cancellation failed" });
+      }
     }),
   }),
   agents: router({
@@ -84,12 +105,18 @@ export const appRouter = router({
     capabilities: protectedProcedure.query(({ ctx }) => listAgentCapabilities(ownerId(ctx))),
     toggleCapability: adminProcedure.input(z.object({ id: z.number().int().positive(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
-      const result = await db.update(agentCapabilities).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(agentCapabilities.id, input.id), eq(agentCapabilities.ownerId, id)));
-      if (!result[0].affectedRows) throw new TRPCError({ code: "NOT_FOUND", message: "Capability not found" });
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "capability.enable" : "capability.disable", targetType: "agent_capability", targetId: String(input.id), status: "completed" });
-      return { ok: true };
+      try {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
+        const result = await db.update(agentCapabilities).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(agentCapabilities.id, input.id), eq(agentCapabilities.ownerId, id)));
+        if (!result[0].affectedRows) throw new TRPCError({ code: "NOT_FOUND", message: "Capability not found" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "capability.enable" : "capability.disable", targetType: "agent_capability", targetId: String(input.id), status: "completed" });
+        return { ok: true };
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "capability.enable" : "capability.disable", targetType: "agent_capability", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Capability update failed" });
+      }
     }),
   }),
   models: router({
@@ -101,12 +128,19 @@ export const appRouter = router({
     select: adminProcedure.input(z.object({ model: z.string().trim().min(1).max(180) })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
       const model = input.model.trim();
-      const catalog = await listLLMModels();
-      if (!catalog.data.some((candidate) => candidate.id === model)) throw new TRPCError({ code: "BAD_REQUEST", message: "Selected model is not available in the server catalog" });
-      const provider = model.toLowerCase().includes("gemini") ? "Google" : model.toLowerCase().includes("gpt") ? "OpenAI" : "Manus";
-      await upsertModelRoute(id, model, model, provider);
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "completed", metadata: { provider } });
-      return { ok: true, model };
+      try {
+        const catalog = await listLLMModels();
+        if (!catalog.data.some((candidate) => candidate.id === model)) throw new TRPCError({ code: "BAD_REQUEST", message: "Selected model is not available in the server catalog" });
+        const provider = model.toLowerCase().includes("gemini") ? "Google" : model.toLowerCase().includes("gpt") ? "OpenAI" : "Manus";
+        const routeId = await upsertModelRoute(id, model, model, provider);
+        if (!routeId) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Model route persistence unavailable" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "completed", metadata: { provider, routeId } });
+        return { ok: true, model };
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "catalog-or-database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Model selection failed" });
+      }
     }),
   }),
   artifacts: router({
@@ -145,38 +179,56 @@ export const appRouter = router({
     list: protectedProcedure.query(({ ctx }) => listScheduledJobs(ownerId(ctx))),
     create: adminProcedure.input(z.object({ name: z.string().trim().min(1).max(160), cron: z.string().regex(/^\d+ \S+ \S+ \S+ \S+ \S+$/, "Use a six-field UTC cron expression"), description: z.string().trim().max(500).optional() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      const heartbeat = await createHeartbeatJob({ name: input.name, cron: input.cron, path: "/api/scheduled/control-plane-job", description: input.description ?? "SCP control-plane scheduled job" }, sessionToken);
-      const inserted = await db.insert(scheduledJobs).values({ ownerId: id, name: input.name, schedule: input.cron, callbackPath: "/api/scheduled/control-plane-job", scheduleCronTaskUid: heartbeat.taskUid, enabled: 1, nextRunAt: heartbeat.nextExecutionAt ? new Date(heartbeat.nextExecutionAt) : null });
-      const jobId = Number(inserted[0].insertId);
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.create", targetType: "scheduled_job", targetId: String(jobId), status: "completed", metadata: { taskUid: heartbeat.taskUid, cron: input.cron } });
-      return { id: jobId, taskUid: heartbeat.taskUid, nextExecutionAt: heartbeat.nextExecutionAt ?? null };
+      try {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        const heartbeat = await createHeartbeatJob({ name: input.name, cron: input.cron, path: "/api/scheduled/control-plane-job", description: input.description ?? "SCP control-plane scheduled job" }, sessionToken);
+        const inserted = await db.insert(scheduledJobs).values({ ownerId: id, name: input.name, schedule: input.cron, callbackPath: "/api/scheduled/control-plane-job", scheduleCronTaskUid: heartbeat.taskUid, enabled: 1, nextRunAt: heartbeat.nextExecutionAt ? new Date(heartbeat.nextExecutionAt) : null });
+        const jobId = Number(inserted[0].insertId);
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.create", targetType: "scheduled_job", targetId: String(jobId), status: "completed", metadata: { taskUid: heartbeat.taskUid, cron: input.cron } });
+        return { id: jobId, taskUid: heartbeat.taskUid, nextExecutionAt: heartbeat.nextExecutionAt ?? null };
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.create", targetType: "scheduled_job", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "scheduler-or-database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Scheduled job creation failed" });
+      }
     }),
     toggle: adminProcedure.input(z.object({ id: z.number().int().positive(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
-      const current = await db.select({ taskUid: scheduledJobs.scheduleCronTaskUid }).from(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id))).limit(1);
-      if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Scheduled job not found" });
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      if (current[0].taskUid) await updateHeartbeatJob(current[0].taskUid, { enable: input.enabled }, sessionToken);
-      await db.update(scheduledJobs).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "job.enable" : "job.disable", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
-      return { ok: true };
+      try {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
+        const current = await db.select({ taskUid: scheduledJobs.scheduleCronTaskUid }).from(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id))).limit(1);
+        if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Scheduled job not found" });
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        if (current[0].taskUid) await updateHeartbeatJob(current[0].taskUid, { enable: input.enabled }, sessionToken);
+        await db.update(scheduledJobs).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "job.enable" : "job.disable", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
+        return { ok: true };
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "job.enable" : "job.disable", targetType: "scheduled_job", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "scheduler-or-database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Scheduled job update failed" });
+      }
     }),
     delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
-      const current = await db.select({ taskUid: scheduledJobs.scheduleCronTaskUid }).from(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id))).limit(1);
-      if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Scheduled job not found" });
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-      if (current[0].taskUid) await deleteHeartbeatJob(current[0].taskUid, sessionToken);
-      await db.delete(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
-      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.delete", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
-      return { ok: true };
+      try {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
+        const current = await db.select({ taskUid: scheduledJobs.scheduleCronTaskUid }).from(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id))).limit(1);
+        if (!current[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Scheduled job not found" });
+        const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+        if (current[0].taskUid) await deleteHeartbeatJob(current[0].taskUid, sessionToken);
+        await db.delete(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.delete", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
+        return { ok: true };
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.delete", targetType: "scheduled_job", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "scheduler-or-database-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Scheduled job deletion failed" });
+      }
     }),
     runs: protectedProcedure.input(z.object({ jobId: z.number().int().positive() })).query(({ ctx, input }) => listJobRuns(ownerId(ctx), input.jobId)),
   }),

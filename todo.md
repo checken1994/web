@@ -52,14 +52,14 @@
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression coverage added, mutation and lifecycle coverage remains to be extended.
 - [ ] Add frontend verification for desktop/mobile navigation and critical flows; screenshots, restart, typecheck, tests and build passed, but authenticated interactive critical-flow evidence remains.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest typecheck/build passed; latest unit suite is 3 files/10 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest typecheck/build passed; latest unit suite is 7 files/22 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
 
 - [x] Implement explicit admin-only/role-based authorization paths and tests for admin versus user behavior; owner scoping is enforced in server helpers and remains subject to database-backed integration proof.
 - [x] Clarify auth design and verify the browser source/build surface contains no readable API keys/provider secrets or session token values; cookie-only auth, full browser-surface scan, and regression test pass. Deployed runtime trace remains a stated limitation.
-- [ ] Add consistent sanitized error handling and audit coverage for every mutation, including logout and database/service failures.
+- [ ] Add consistent sanitized error handling and audit coverage for every dashboard mutation, including logout and database/provider/service failures; core paths are wrapped, but mutation-wide failure-path coverage and sessions.send missing-session audit remain open.
 - [ ] Implement and verify all session cancel/unknown lifecycle states; DB/router transition tests, pure matrix, UI and audit wiring pass, but authenticated interactive runtime proof remains.
 - [x] Persist and validate selected models server-side and expose only safe catalog fields to the client; admin selection authorization is contract-tested.
 - [x] Add actual scheduled-job and capability enable/disable UI controls with frontend/source verification; interactive verification remains a documented limitation.
@@ -75,3 +75,9 @@
 - [x] Add an explicit unknown-session-status router test proving cancel preserves it and records a no-op audit event.
 - [ ] Capture authenticated interactive evidence for cancel pending/error/audit/state behavior.
 - [x] Add distinct router-level queued->cancelled and running->cancelled tests instead of a generic changed=true case; suite passes with both cases plus terminal/unknown no-op cases.
+- [x] Fail closed when models.select persistence returns null and audit the failure; dedicated fault-path test passes.
+- [x] Add fault-path contract coverage for sanitized model persistence errors and failed audit status; broad injected failure matrix remains a future expansion.
+- [x] Document and test the logout audit failure boundary: cookie clearing is local/observable, safeAudit isolates audit-store failure, and the focused injected failure test passes.
+- [ ] Add targeted failure-path contract coverage for session create/send/cancel, capability toggle, model select, artifact register/access, and job create/toggle/delete.
+- [x] Record and test a failed audit event when sessions.send targets a missing or unauthorized session; both fail-closed cases now pass at the owner-scoped router boundary.
+- [x] Add a contract test proving sessions.send for an existing non-owner session returns sanitized NOT_FOUND and records failed audit; the DB helper intentionally collapses missing/non-owner to the same safe result.

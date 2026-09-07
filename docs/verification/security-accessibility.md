@@ -6,9 +6,13 @@ This audit covers the browser-delivered surface of the SCP Control Plane dashboa
 
 ## Changes verified
 
-The server now validates selected model IDs against the live model catalog before persisting owner-scoped routes. Unknown model IDs are rejected and covered by contract tests.
+The server now validates selected model IDs against the live model catalog before persisting owner-scoped routes. Unknown model IDs are rejected and covered by contract tests. If route persistence returns null, the mutation fails with `SERVICE_UNAVAILABLE` and records a sanitized failed audit event.
+
+Logout boundary: `auth.logout` clears the HttpOnly session cookie locally before attempting audit persistence. The `safeAudit` wrapper isolates audit-store failure so logout does not expose a database error or fail to clear the cookie. A direct injected audit-failure test is not meaningful with the current framework response object; this boundary is documented rather than presented as full production fault-injection proof.
 
 The browser now uses the HttpOnly session-cookie path only. The tRPC client sends credentials with requests but does not read session cookies, copy them to `sessionStorage`, or construct a Bearer `Authorization` header. A regression test scans source, public assets, and built browser assets for forbidden secret/token patterns. The unused template Map component was changed to fail closed until a server-side provider proxy exists; it no longer reads `VITE_FRONTEND_FORGE_API_KEY` or any provider credential.
+
+The owner-scoped session-send seam is tested with both a missing session and an existing session owned by another user; both return the same sanitized `NOT_FOUND` and failed audit event by design.
 
 The dashboard changed its nested content landmarks from nested `<main>` elements to labelled `<section>` elements. A skip link, visible focus styling, live error regions, associated command input label, reduced-motion media query, and explicit empty/loading/error states are present. Session history is selected and loaded through `trpc.sessions.history`; session cancellation is owner-scoped and audited; capability switches and job-run history are wired to protected server procedures; artifact provenance is rendered and Preview/Download actions call the authorized signed-URL procedure. Scheduled failures now write a sanitized `failed` run instead of returning raw provider/DB error text.
 
@@ -17,7 +21,7 @@ The dashboard changed its nested content landmarks from nested `<main>` elements
 | Check | Command or observation | Result |
 |---|---|---|
 | Type safety | `pnpm check` | Passed with exit code 0 |
-| Unit/contract tests | `pnpm test` | 3 files, 11 tests passed |
+| Unit/contract tests | `pnpm test` | 7 files, 22 tests passed |
 | Production build | `pnpm build` | Vite and server bundle completed with exit code 0 |
 | Browser secret scan | Literal scan over `client/src`, `client/public`, and `dist/public` | No forbidden secret/token patterns found |
 | Regression guard | `server/frontend.security.test.ts` | Passed; fails closed on provider keys, secret envs, sessionStorage cookie reads, Bearer forwarding, or secret VITE env imports |
