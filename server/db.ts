@@ -62,11 +62,15 @@ export async function addSessionMessage(ownerId: number, sessionId: number, cont
   return { id: Number(result[0].insertId), sessionId };
 }
 
+export function canCancelSessionStatus(status: string) {
+  return status === "queued" || status === "running";
+}
+
 export async function cancelControlSession(ownerId: number, sessionId: number) {
   const db = await getDb(); if (!db) throw new Error("Database unavailable");
   const current = await db.select({ id: sessions.id, status: sessions.status }).from(sessions).where(and(eq(sessions.id, sessionId), eq(sessions.ownerId, ownerId))).limit(1);
   if (!current[0]) return null;
-  if (current[0].status !== "queued" && current[0].status !== "running") return { id: sessionId, status: current[0].status, changed: false } as const;
+  if (!canCancelSessionStatus(current[0].status)) return { id: sessionId, status: current[0].status, changed: false } as const;
   await db.update(sessions).set({ status: "cancelled", lastActivityAt: new Date() }).where(and(eq(sessions.id, sessionId), eq(sessions.ownerId, ownerId)));
   return { id: sessionId, status: "cancelled", changed: true } as const;
 }

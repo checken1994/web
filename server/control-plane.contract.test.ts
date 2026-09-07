@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
+import { canCancelSessionStatus } from "./db";
 import type { TrpcContext } from "./_core/context";
 
 function contextWithUser(user: TrpcContext["user"]): TrpcContext {
@@ -46,6 +47,12 @@ describe("control-plane authorization contracts", () => {
   it("rejects session cancellation without an authenticated user", async () => {
     const call = appRouter.createCaller(contextWithUser(null)).sessions.cancel({ sessionId: 1 });
     await expect(call).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("allows cancellation only for queued and running states", () => {
+    expect(canCancelSessionStatus("queued")).toBe(true);
+    expect(canCancelSessionStatus("running")).toBe(true);
+    for (const status of ["completed", "failed", "cancelled", "unknown"]) expect(canCancelSessionStatus(status)).toBe(false);
   });
 
   it("rejects unknown model selection before persistence", async () => {

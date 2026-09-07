@@ -60,7 +60,7 @@
 - [x] Implement explicit admin-only/role-based authorization paths and tests for admin versus user behavior; owner scoping is enforced in server helpers and remains subject to database-backed integration proof.
 - [x] Clarify auth design and verify the browser source/build surface contains no readable API keys/provider secrets or session token values; cookie-only auth, full browser-surface scan, and regression test pass. Deployed runtime trace remains a stated limitation.
 - [ ] Add consistent sanitized error handling and audit coverage for every mutation, including logout and database/service failures.
-- [ ] Implement and verify all session cancel/unknown lifecycle states; cancel procedure, UI action, audit events and authorization tests exist, full state-matrix tests remain.
+- [ ] Implement and verify all session cancel/unknown lifecycle states; DB/router transition tests, pure matrix, UI and audit wiring pass, but authenticated interactive runtime proof remains.
 - [x] Persist and validate selected models server-side and expose only safe catalog fields to the client; admin selection authorization is contract-tested.
 - [x] Add actual scheduled-job and capability enable/disable UI controls with frontend/source verification; interactive verification remains a documented limitation.
 - [x] Add job-run list/query endpoint and UI for failure, timeout, cancelled, and unknown records; populated runtime/test fixtures remain unavailable for full status-matrix verification.
@@ -71,3 +71,7 @@
 - [ ] Complete accessibility, responsive, security and frontend critical-flow verification; landmark/focus/reduced-motion and responsive review passed, automated accessibility and interactive checks remain.
 - [ ] Run actual desktop and 375px mobile screenshot checks plus interactive session submit, model select, artifact open, and job toggle checks; desktop/mobile captures passed before and after the JSX fix, interactive checks remain.
 - [x] Validate models.select against the live server catalog before persistence and add invalid-model plus authorization contract tests; owner-scoped persistence remains database-integration scoped.
+- [x] Add router-level cancel tests for distinct queued/running active cancellation and no-op terminal/unknown statuses; DB-backed integration remains outside the current test harness.
+- [x] Add an explicit unknown-session-status router test proving cancel preserves it and records a no-op audit event.
+- [ ] Capture authenticated interactive evidence for cancel pending/error/audit/state behavior.
+- [x] Add distinct router-level queued->cancelled and running->cancelled tests instead of a generic changed=true case; suite passes with both cases plus terminal/unknown no-op cases.
