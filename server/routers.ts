@@ -19,6 +19,10 @@ function ownerId(ctx: { user?: { id: number } | null }) {
   return ctx.user.id;
 }
 
+async function safeAudit(input: Parameters<typeof recordAudit>[0]) {
+  try { await recordAudit(input); return true; } catch { return false; }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -26,7 +30,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(async ({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      if (ctx.user) await recordAudit({ ownerId: ctx.user.id, actorOpenId: ctx.user.openId, action: "auth.logout", targetType: "user", targetId: String(ctx.user.id), status: "completed" });
+      if (ctx.user) await safeAudit({ ownerId: ctx.user.id, actorOpenId: ctx.user.openId, action: "auth.logout", targetType: "user", targetId: String(ctx.user.id), status: "completed" });
       return { success: true } as const;
     }),
   }),
@@ -38,14 +42,14 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({ title: titleSchema, selectedModel: z.string().trim().max(180).optional() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
       const created = await createControlSession(id, input.title, input.selectedModel);
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.create", targetType: "session", targetId: String(created.id), status: "completed", correlationId: created.correlationId });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.create", targetType: "session", targetId: String(created.id), status: "completed", correlationId: created.correlationId });
       return created;
     }),
     send: protectedProcedure.input(z.object({ sessionId: z.number().int().positive(), content: z.string().trim().min(1).max(12000), model: z.string().trim().max(180).optional() })).mutation(async ({ ctx, input }) => {
       const id = ownerId(ctx);
       const result = await addSessionMessage(id, input.sessionId, input.content);
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.submit", targetType: "session", targetId: String(input.sessionId), status: "accepted", metadata: { contentLength: input.content.length, requestedModel: input.model ?? null } });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.submit", targetType: "session", targetId: String(input.sessionId), status: "accepted", metadata: { contentLength: input.content.length, requestedModel: input.model ?? null } });
       try {
         const available = await listLLMModels();
         const requested = input.model ? available.data.find((model) => model.id === input.model) : available.data[0];
@@ -57,11 +61,11 @@ export const appRouter = router({
         const assistantText = response.choices?.[0]?.message?.content;
         const text = typeof assistantText === "string" ? assistantText : "The model returned no text response.";
         const assistant = await addAssistantMessage(id, input.sessionId, text, "completed");
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.complete", targetType: "session", targetId: String(input.sessionId), status: "completed", metadata: { model: requested.id } });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.complete", targetType: "session", targetId: String(input.sessionId), status: "completed", metadata: { model: requested.id } });
         return { ...result, assistant, model: requested.id, content: text };
       } catch (error) {
         await addAssistantMessage(id, input.sessionId, "The request could not be verified or completed.", "failed");
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.fail", targetType: "session", targetId: String(input.sessionId), status: "failed", metadata: { reason: error instanceof Error ? error.message : "unknown" } });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "session.command.fail", targetType: "session", targetId: String(input.sessionId), status: "failed", metadata: { reason: error instanceof Error ? error.message : "unknown" } });
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Model request failed" });
       }
@@ -71,7 +75,7 @@ export const appRouter = router({
       const id = ownerId(ctx);
       const result = await cancelControlSession(id, input.sessionId);
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Session not found" });
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "session.cancel" : "session.cancel.noop", targetType: "session", targetId: String(input.sessionId), status: result.changed ? "completed" : "unknown", metadata: { previousOrCurrentStatus: result.status } });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "session.cancel" : "session.cancel.noop", targetType: "session", targetId: String(input.sessionId), status: result.changed ? "completed" : "unknown", metadata: { previousOrCurrentStatus: result.status } });
       return result;
     }),
   }),
@@ -84,7 +88,7 @@ export const appRouter = router({
       if (!db) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Database unavailable" });
       const result = await db.update(agentCapabilities).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(agentCapabilities.id, input.id), eq(agentCapabilities.ownerId, id)));
       if (!result[0].affectedRows) throw new TRPCError({ code: "NOT_FOUND", message: "Capability not found" });
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "capability.enable" : "capability.disable", targetType: "agent_capability", targetId: String(input.id), status: "completed" });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "capability.enable" : "capability.disable", targetType: "agent_capability", targetId: String(input.id), status: "completed" });
       return { ok: true };
     }),
   }),
@@ -101,7 +105,7 @@ export const appRouter = router({
       if (!catalog.data.some((candidate) => candidate.id === model)) throw new TRPCError({ code: "BAD_REQUEST", message: "Selected model is not available in the server catalog" });
       const provider = model.toLowerCase().includes("gemini") ? "Google" : model.toLowerCase().includes("gpt") ? "OpenAI" : "Manus";
       await upsertModelRoute(id, model, model, provider);
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "completed", metadata: { provider } });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "model.select", targetType: "model", targetId: model, status: "completed", metadata: { provider } });
       return { ok: true, model };
     }),
   }),
@@ -113,10 +117,10 @@ export const appRouter = router({
         const bytes = Buffer.from(input.base64, "base64");
         if (bytes.byteLength > 8 * 1024 * 1024) throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "Artifact exceeds the 8 MiB limit" });
         const result = await createArtifactFromBytes({ ownerId: id, sessionId: input.sessionId, name: input.name, mimeType: input.mimeType, bytes, provenance: input.provenance });
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", targetId: String(result.id), status: "completed", metadata: { sizeBytes: result.sizeBytes, sha256: result.sha256, sessionId: input.sessionId ?? null } });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", targetId: String(result.id), status: "completed", metadata: { sizeBytes: result.sizeBytes, sha256: result.sha256, sessionId: input.sessionId ?? null } });
         return result;
       } catch (error) {
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.register", targetType: "artifact", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Artifact registration failed" });
       }
@@ -128,10 +132,10 @@ export const appRouter = router({
         if (!artifact) throw new TRPCError({ code: "NOT_FOUND", message: "Artifact not found" });
         if (!artifact.storageKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Artifact storage reference is missing" });
         const url = await storageGetSignedUrl(artifact.storageKey);
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "completed" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "completed" });
         return { url, expiresInSeconds: 300 };
       } catch (error) {
-        await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "artifact.access", targetType: "artifact", targetId: String(input.id), status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "storage-or-database-failure" } }).catch(() => undefined);
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Artifact access failed" });
       }
@@ -147,7 +151,7 @@ export const appRouter = router({
       const heartbeat = await createHeartbeatJob({ name: input.name, cron: input.cron, path: "/api/scheduled/control-plane-job", description: input.description ?? "SCP control-plane scheduled job" }, sessionToken);
       const inserted = await db.insert(scheduledJobs).values({ ownerId: id, name: input.name, schedule: input.cron, callbackPath: "/api/scheduled/control-plane-job", scheduleCronTaskUid: heartbeat.taskUid, enabled: 1, nextRunAt: heartbeat.nextExecutionAt ? new Date(heartbeat.nextExecutionAt) : null });
       const jobId = Number(inserted[0].insertId);
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.create", targetType: "scheduled_job", targetId: String(jobId), status: "completed", metadata: { taskUid: heartbeat.taskUid, cron: input.cron } });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.create", targetType: "scheduled_job", targetId: String(jobId), status: "completed", metadata: { taskUid: heartbeat.taskUid, cron: input.cron } });
       return { id: jobId, taskUid: heartbeat.taskUid, nextExecutionAt: heartbeat.nextExecutionAt ?? null };
     }),
     toggle: adminProcedure.input(z.object({ id: z.number().int().positive(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
@@ -159,7 +163,7 @@ export const appRouter = router({
       const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
       if (current[0].taskUid) await updateHeartbeatJob(current[0].taskUid, { enable: input.enabled }, sessionToken);
       await db.update(scheduledJobs).set({ enabled: input.enabled ? 1 : 0 }).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "job.enable" : "job.disable", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: input.enabled ? "job.enable" : "job.disable", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
       return { ok: true };
     }),
     delete: adminProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -171,7 +175,7 @@ export const appRouter = router({
       const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
       if (current[0].taskUid) await deleteHeartbeatJob(current[0].taskUid, sessionToken);
       await db.delete(scheduledJobs).where(and(eq(scheduledJobs.id, input.id), eq(scheduledJobs.ownerId, id)));
-      await recordAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.delete", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
+      await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "job.delete", targetType: "scheduled_job", targetId: String(input.id), status: "completed" });
       return { ok: true };
     }),
     runs: protectedProcedure.input(z.object({ jobId: z.number().int().positive() })).query(({ ctx, input }) => listJobRuns(ownerId(ctx), input.jobId)),
