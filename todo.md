@@ -81,3 +81,5 @@
 - [ ] Add targeted failure-path contract coverage for session create/send/cancel, capability toggle, model select, artifact register/access, and job create/toggle/delete.
 - [x] Record and test a failed audit event when sessions.send targets a missing or unauthorized session; both fail-closed cases now pass at the owner-scoped router boundary.
 - [x] Add a contract test proving sessions.send for an existing non-owner session returns sanitized NOT_FOUND and records failed audit; the DB helper intentionally collapses missing/non-owner to the same safe result.
+- [x] Fix authenticated navigation so `?section=sessions|agents|models|artifacts|jobs|audit` changes the rendered view, not only the URL; verified Sessions, Models, Artifacts, Jobs and Audit views in authenticated preview.
+- [x] Add explicit loading/error/empty states to models, sessions, jobs, and audit detail views; authenticated preview verified Models loading/catalog, Artifacts loading, Jobs empty and Audit loading/records states.
