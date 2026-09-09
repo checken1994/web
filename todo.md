@@ -52,14 +52,14 @@
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression coverage added, mutation and lifecycle coverage remains to be extended.
 - [ ] Add frontend verification for desktop/mobile navigation and critical flows; screenshots, restart, typecheck, tests and build passed, but authenticated interactive critical-flow evidence remains.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest typecheck/build passed; latest unit suite is 7 files/22 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery. Latest check/build passed; latest unit suite is 8 files/31 tests passed; browser-surface scan and source accessibility review passed, while automated WCAG and authenticated interactive checks remain.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
 
 - [x] Implement explicit admin-only/role-based authorization paths and tests for admin versus user behavior; owner scoping is enforced in server helpers and remains subject to database-backed integration proof.
 - [x] Clarify auth design and verify the browser source/build surface contains no readable API keys/provider secrets or session token values; cookie-only auth, full browser-surface scan, and regression test pass. Deployed runtime trace remains a stated limitation.
-- [ ] Add consistent sanitized error handling and audit coverage for every dashboard mutation, including logout and database/provider/service failures; core paths are wrapped, but mutation-wide failure-path coverage and sessions.send missing-session audit remain open.
+- [x] Add consistent sanitized error handling and audit coverage for every dashboard mutation, including logout and database/provider/service failures; targeted fault-path tests now cover all dashboard mutation families, including sessions.send DB/provider failures. Exhaustive provider permutations remain outside scope.
 - [ ] Implement and verify all session cancel/unknown lifecycle states; DB/router transition tests, pure matrix, UI and audit wiring pass, but authenticated interactive runtime proof remains.
 - [x] Persist and validate selected models server-side and expose only safe catalog fields to the client; admin selection authorization is contract-tested.
 - [x] Add actual scheduled-job and capability enable/disable UI controls with frontend/source verification; interactive verification remains a documented limitation.
@@ -78,8 +78,14 @@
 - [x] Fail closed when models.select persistence returns null and audit the failure; dedicated fault-path test passes.
 - [x] Add fault-path contract coverage for sanitized model persistence errors and failed audit status; broad injected failure matrix remains a future expansion.
 - [x] Document and test the logout audit failure boundary: cookie clearing is local/observable, safeAudit isolates audit-store failure, and the focused injected failure test passes.
-- [ ] Add targeted failure-path contract coverage for session create/send/cancel, capability toggle, model select, artifact register/access, and job create/toggle/delete.
+- [x] Add targeted failure-path contract coverage for session create/send/cancel, capability toggle, model select, artifact register/access, and job create/toggle/delete; 8 files/31 tests pass.
 - [x] Record and test a failed audit event when sessions.send targets a missing or unauthorized session; both fail-closed cases now pass at the owner-scoped router boundary.
 - [x] Add a contract test proving sessions.send for an existing non-owner session returns sanitized NOT_FOUND and records failed audit; the DB helper intentionally collapses missing/non-owner to the same safe result.
 - [x] Fix authenticated navigation so `?section=sessions|agents|models|artifacts|jobs|audit` changes the rendered view, not only the URL; verified Sessions, Models, Artifacts, Jobs and Audit views in authenticated preview.
 - [x] Add explicit loading/error/empty states to models, sessions, jobs, and audit detail views; authenticated preview verified Models loading/catalog, Artifacts loading, Jobs empty and Audit loading/records states.
+- [x] Add targeted artifact access storage/presign failure test and verify sanitized error plus failed audit.
+- [x] Add targeted sessions.send database failure test before message insert with sanitized error and failed audit.
+- [x] Add targeted sessions.send provider/invokeLLM failure test after accepted audit with sanitized error and failed audit.
+- [x] Fix New session flow: clicking the Overview CTA focuses and scrolls to the accessible server-backed command form instead of routing to an empty Sessions view; authenticated browser verified.
+- [x] Refresh session list and select the created session after successful command submission; authenticated network/browser evidence reconciled session #1, completed status, and message history after the stale-query fix.
+- [x] Run a fresh authenticated command after the stale-query fix and verify automatic navigation to Sessions with the new session selected and history visible without reload or manual click; end-to-end browser evidence passed for session #30001.
