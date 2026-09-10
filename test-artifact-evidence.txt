@@ -1,3 +1,0 @@
-SCP Control Plane evidence test artifact.
-Purpose: verify owner-scoped registration, provenance, signed preview/download, and audit behavior.
-No secrets or personal data.
