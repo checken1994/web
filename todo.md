@@ -96,3 +96,4 @@
 - [x] Create one safe owner-scoped artifact and one safe owner-scoped scheduled job through the explicit dashboard forms; artifact register/Preview/Download and job create/Disable/Enable/Runs empty-state were verified end-to-end without fake customer data.
 - [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes; the first attempt completed before the action was available.
 - [x] Reconcile the stale Vite parser error reported at Home.tsx line 104; current source is valid, restart boot is clean, typecheck passes, 34 tests pass and production build succeeds.
+- [x] Fix session list row semantics so the active-session Cancel control is not nested inside a `<button>`; rows now use keyboard-accessible role=button semantics, child Cancel remains a real button, and browser smoke/typecheck/tests/build pass.
