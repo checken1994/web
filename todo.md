@@ -50,9 +50,9 @@
 
 - [x] Implement immutable-style audit activity records for logout, session commands, model changes, capability changes, artifact access, and job changes.
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
-- [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression coverage added, mutation and lifecycle coverage remains to be extended.
-- [ ] Add frontend verification for desktop/mobile navigation and critical flows; responsive screenshots, restart, session submit/auto-select/history, model selection and audit passed, but cancel/artifact/job mutations remain unexercised.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; check/build, 8 files/31 tests, browser secret scan and manual source review pass, but automated WCAG and unavailable authenticated mutations remain.
+- [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression and targeted mutation/lifecycle coverage are present, with 9 test files/34 tests passing.
+- [ ] Add frontend verification for desktop/mobile navigation and critical flows; session/model/audit plus artifact register/Preview/Download and job create/Disable/Enable/Runs are now browser-verified, but cancel runtime remains unexercised.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, axe unauthenticated is clean and authenticated artifact/job smoke evidence is recorded, but automated authenticated WCAG and cancel runtime remain.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
@@ -67,9 +67,9 @@
 - [x] Add session list UI wired to server data instead of static placeholders.
 - [x] Add real session detail/history UI wired to trpc.sessions.history with selection, empty/error/loading states.
 - [x] Add artifact provenance rendering and explicit Preview/Download actions with query/access loading and error states.
-- [ ] Verify artifact metadata query and signed URL access interactively; owner-scoped UI states and presign failure contracts pass, but no real artifact exists for authorized preview/download.
+- [x] Verify artifact metadata query and signed URL access interactively; a safe owner-scoped artifact reached ready state and authenticated Preview/Download returned time-limited signed URLs with provenance/hash.
 - [ ] Complete accessibility, responsive, security and frontend critical-flow verification; manual review, responsive screenshots, cookie-only auth, browser scan and unauthenticated automated checks pass, but authenticated automated WCAG and missing mutation flows remain.
-- [ ] Run desktop and 375px mobile screenshot checks plus authenticated session submit, model selection, artifact open and job toggle checks; artifact/job records were unavailable for the last two flows.
+- [x] Run desktop and 375px mobile screenshot checks plus authenticated session submit, model selection, artifact Preview/Download and scheduled-job toggle checks; all listed flows except cancel are exercised, with post-restart Scheduled jobs smoke capture also passing.
 - [x] Validate models.select against the live server catalog before persistence and add invalid-model plus authorization contract tests; owner-scoped persistence remains database-integration scoped.
 - [x] Add router-level cancel tests for distinct queued/running active cancellation and no-op terminal/unknown statuses; DB-backed integration remains outside the current test harness.
 - [x] Add an explicit unknown-session-status router test proving cancel preserves it and records a no-op audit event.
@@ -90,6 +90,9 @@
 - [x] Refresh session list and select the created session after successful command submission; authenticated network/browser evidence reconciled session #1, completed status, and message history after the stale-query fix.
 - [x] Run a fresh authenticated command after the stale-query fix and verify automatic navigation to Sessions with the new session selected and history visible without reload or manual click; end-to-end browser evidence passed for session #30001.
 - [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes.
-- [ ] Create or seed one safe owner-scoped artifact and one safe owner-scoped scheduled job through an explicit test-only path, then verify artifact preview/download and job toggle end-to-end without fake customer data.
+- [x] Create one safe owner-scoped artifact and one safe owner-scoped scheduled job through explicit dashboard forms, then verify artifact Preview/Download, job Disable/Enable and empty Runs state without fake customer data.
 - [x] Run automated accessibility checks for the unauthenticated surface and source contracts; Playwright + axe reports zero violations and 3 accessibility contract assertions pass.
-- [ ] Complete automated accessibility coverage for authenticated dashboard routes, including labels, focus order, contrast and reduced-motion behavior.
+- [ ] Complete automated accessibility coverage for authenticated dashboard routes, including labels, focus order, contrast and reduced-motion behavior; unauthenticated axe and source contracts pass, authenticated axe is still pending.
+- [x] Create one safe owner-scoped artifact and one safe owner-scoped scheduled job through the explicit dashboard forms; artifact register/Preview/Download and job create/Disable/Enable/Runs empty-state were verified end-to-end without fake customer data.
+- [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes.
+- [x] Reconcile the stale Vite parser error reported at Home.tsx line 104; current source is valid, restart boot is clean, typecheck passes, 34 tests pass and production build succeeds.
