@@ -169,7 +169,7 @@ export default function Home() {
   const filteredAgents = useMemo(() => serverAgents.filter((agent) => `${agent.name} ${agent.type}`.toLowerCase().includes(query.toLowerCase())), [query, serverAgents]);
 
   if (loading) return <div className="page-loading"><Radio className="spin" size={18} /> Establishing secure session…</div>;
-  if (!isAuthenticated) return <div className="login-screen"><div className="login-card"><div className="brand-mark"><TerminalSquare size={22} /></div><p className="eyebrow">SCP CONTROL PLANE</p><h1>Operate with evidence.</h1><p>Secure remote operations for sessions, agents, models and verified outcomes.</p><Button onClick={startLogin} className="primary-button w-full">Sign in securely <ChevronRight size={16} /></Button><p className="login-note"><ShieldCheck size={14} /> Authentication is handled by Manus OAuth.</p></div></div>;
+  if (!isAuthenticated) return <main className="login-screen"><div className="login-card"><div className="brand-mark"><TerminalSquare size={22} /></div><p className="eyebrow">SCP CONTROL PLANE</p><h1>Operate with evidence.</h1><p>Secure remote operations for sessions, agents, models and verified outcomes.</p><Button onClick={startLogin} className="primary-button w-full">Sign in securely <ChevronRight size={16} /></Button><p className="login-note"><ShieldCheck size={14} /> Authentication is handled by Manus OAuth.</p></div></main>;
 
   const displayName = user?.name || me.data?.name || "Operator";
   const content = (
