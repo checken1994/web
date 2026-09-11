@@ -51,8 +51,8 @@
 - [x] Implement immutable-style audit activity records for logout, session commands, model changes, capability changes, artifact access, and job changes.
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression and targeted mutation/lifecycle coverage are present, with 9 test files/34 tests passing.
-- [ ] Add frontend verification for desktop/mobile navigation and critical flows; session/model/audit plus artifact register/Preview/Download and job create/Disable/Enable/Runs are now browser-verified, but cancel runtime remains unexercised.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, axe unauthenticated is clean and authenticated artifact/job smoke evidence is recorded, but automated authenticated WCAG and cancel runtime remain.
+- [ ] Add frontend verification for desktop/mobile navigation and critical flows; session/model/audit, artifact register/Preview/Download and job create/Disable/Enable/Runs are browser-verified, including user screenshot confirmation that the temporary job ended Disabled; cancel runtime remains unexercised.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, axe unauthenticated is clean and authenticated artifact/job evidence is recorded, including final Disabled screenshot, but authenticated WCAG and cancel runtime remain.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
