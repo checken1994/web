@@ -261,7 +261,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main id="main-content" className="flex-1 p-4">{children}</main>
+        <div id="main-content" tabIndex={-1} className="flex-1 p-4 focus:outline-none">{children}</div>
       </SidebarInset>
     </>
   );
