@@ -1,8 +1,9 @@
 {
   "url": "http://127.0.0.1:3000/",
   "title": "SCP Control Plane",
-  "capturedAt": "2026-09-10T17:28:09.504Z",
+  "capturedAt": "2026-09-11T17:03:07.090Z",
+  "authenticatedHarness": false,
   "violationCount": 0,
   "violations": [],
-  "note": "This automated run uses the unauthenticated preview surface unless A11Y_URL is provided with an authenticated test harness."
+  "note": "Unauthenticated preview audit; provide A11Y_STORAGE_STATE pointing to an external storage-state file for authenticated coverage."
 }

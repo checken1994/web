@@ -3,8 +3,11 @@ import AxeBuilder from "@axe-core/playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 
 const url = process.env.A11Y_URL ?? "http://127.0.0.1:3000/";
+const storageStatePath = process.env.A11Y_STORAGE_STATE;
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+const contextOptions = { viewport: { width: 1280, height: 720 } };
+if (storageStatePath) contextOptions.storageState = storageStatePath;
+const context = await browser.newContext(contextOptions);
 try {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "networkidle", timeout: 30_000 });
@@ -13,6 +16,7 @@ try {
     url,
     title: await page.title(),
     capturedAt: new Date().toISOString(),
+    authenticatedHarness: Boolean(storageStatePath),
     violationCount: results.violations.length,
     violations: results.violations.map(({ id, impact, help, helpUrl, nodes }) => ({
       id,
@@ -22,7 +26,9 @@ try {
       nodeCount: nodes.length,
       targets: nodes.map((node) => node.target),
     })),
-    note: "This automated run uses the unauthenticated preview surface unless A11Y_URL is provided with an authenticated test harness.",
+    note: storageStatePath
+      ? "Authenticated audit used an external Playwright storage-state file; credentials are not embedded or logged."
+      : "Unauthenticated preview audit; provide A11Y_STORAGE_STATE pointing to an external storage-state file for authenticated coverage.",
   };
   await mkdir("docs/verification", { recursive: true });
   await writeFile("docs/verification/axe-result.json", `${JSON.stringify(report, null, 2)}\n`);
