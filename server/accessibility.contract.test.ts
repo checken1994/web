@@ -32,4 +32,16 @@ describe("accessibility source contracts", () => {
     expect(home).toMatch(/aria-label=\"[^\"]+\"/);
     expect(home).toContain("aria-invalid");
   });
+
+  it("keeps form labels associated and keyboard order deterministic", async () => {
+    const home = await source("client/src/pages/Home.tsx");
+    const css = await source("client/src/index.css");
+    expect(home).toContain('htmlFor="artifact-file"');
+    expect(home).toContain('id="artifact-file"');
+    expect(home).toContain('tabIndex={0}');
+    expect(home).toContain('onKeyDown={(event) =>');
+    expect(css).toMatch(/prefers-reduced-motion\s*:\s*reduce/);
+    expect(css).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
+    expect(css).toMatch(/transition-duration:\s*0\.01ms\s*!important/);
+  });
 });
