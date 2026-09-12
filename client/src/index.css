@@ -53,7 +53,8 @@ button { cursor: pointer; }
 .login-note { color: #71879d; font-size: .78rem; display: flex; gap: 7px; align-items: center; margin-top: 18px; }
 .brand-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: #74e3ed; background: #1a3543; border: 1px solid #285967; }
 .brand-mark.small { width: 34px; height: 34px; border-radius: 10px; }
-.dashboard-shell { min-height: 100vh; background: radial-gradient(circle at 100% 0, #132432 0, transparent 33%), #0b0f18; }
+.dashboard-shell { min-height: 100vh; position: relative; isolation: isolate; background: #0b0f18; }
+.dashboard-shell::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(circle at 100% 0, #132432 0, transparent 33%); }
 .topbar { height: 82px; display: flex; align-items: center; justify-content: space-between; padding: 0 38px; border-bottom: 1px solid #1d2837; background: rgba(11, 15, 24, .84); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
 .topbar-title, .topbar-actions, .hero-row, .section-heading, .panel-header, .detail-toolbar, .command-line { display: flex; align-items: center; }
 .topbar-title { gap: 13px; }
