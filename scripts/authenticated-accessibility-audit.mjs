@@ -16,6 +16,7 @@ const results = [];
 try {
   for (const section of routes) {
     const context = await browser.newContext({ storageState });
+    await context.emulateMedia({ reducedMotion: "reduce" });
     const page = await context.newPage();
     await page.goto(`${baseUrl}/?section=${section}`, { waitUntil: "networkidle" });
     await page.locator("#main-content").waitFor({ state: "attached" });
@@ -35,9 +36,25 @@ try {
     });
     const reducedMotion = await page.evaluate(() => {
       const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-      return { mediaMatches: media.matches, hasReducedMotionRule: [...document.styleSheets].some((sheet) => { try { return [...sheet.cssRules].some((rule) => rule.conditionText?.includes("prefers-reduced-motion")); } catch { return false; } }) };
+      const animated = [...document.querySelectorAll("*")].filter((element) => {
+        const style = getComputedStyle(element);
+        const transitionMs = Number.parseFloat(style.transitionDuration) || 0;
+        const animationMs = Number.parseFloat(style.animationDuration) || 0;
+        return (style.animationName !== "none" && animationMs > 0.01) || transitionMs > 0.01;
+      });
+      return { mediaMatches: media.matches, animatedCount: animated.length, hasReducedMotionRule: [...document.styleSheets].some((sheet) => { try { return [...sheet.cssRules].some((rule) => rule.conditionText?.includes("prefers-reduced-motion")); } catch { return false; } }) };
     });
-    results.push({ section, violations: axe.violations, incomplete: axe.incomplete, passes: axe.passes.length, focus, reducedMotion });
+    await page.locator("body").press("Tab");
+    const focusSequence = [];
+    for (let i = 0; i < Math.min(focus.tabbableCount, 40); i += 1) {
+      focusSequence.push(await page.evaluate(() => {
+        const element = document.activeElement;
+        return { tag: element?.tagName ?? "", id: element?.id ?? "", name: (element?.getAttribute("aria-label") || element?.textContent || element?.getAttribute("placeholder") || "").trim().slice(0, 80) };
+      }));
+      await page.keyboard.press("Tab");
+    }
+    const focusFailures = focusSequence.filter((entry) => !entry.name || entry.tag === "BODY");
+    results.push({ section, violations: axe.violations, incomplete: axe.incomplete, passes: axe.passes.length, focus, focusSequence, focusFailures, reducedMotion });
     await context.close();
   }
 } finally {
@@ -46,10 +63,13 @@ try {
 
 await fs.mkdir(new URL(".", `file://${process.cwd()}/${outputPath}`).pathname, { recursive: true }).catch(() => {});
 await fs.writeFile(outputPath, JSON.stringify({ baseUrl, routes, results }, null, 2));
-const failures = results.flatMap(({ section, violations, focus }) => [
+const failures = results.flatMap(({ section, violations, focus, focusFailures, reducedMotion }) => [
   ...violations.map((violation) => `${section}: axe ${violation.id}`),
   ...(focus.unnamedCount ? [`${section}: unnamed=${focus.unnamedCount}`] : []),
   ...(focus.positiveTabIndexCount ? [`${section}: positiveTabIndex=${focus.positiveTabIndexCount}`] : []),
+  ...(focusFailures.length ? [`${section}: focusFailures=${focusFailures.length}`] : []),
+  ...(reducedMotion.mediaMatches !== true ? [`${section}: reducedMotion media did not match`] : []),
+  ...(reducedMotion.animatedCount ? [`${section}: animatedCount=${reducedMotion.animatedCount}`] : []),
 ]);
 if (failures.length) throw new Error(`Authenticated accessibility audit failed: ${failures.join(", ")}`);
 console.log(JSON.stringify({ routes: results.length, failures: 0, outputPath }));
