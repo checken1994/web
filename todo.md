@@ -52,7 +52,7 @@
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression and targeted mutation/lifecycle coverage are present, with 9 test files/34 tests passing.
 - [ ] Add frontend verification for desktop/mobile navigation and critical flows; session/model/audit, artifact register/Preview/Download and job create/Disable/Enable/Runs are browser-verified, including user screenshot confirmation that the temporary job ended Disabled; cancel runtime remains unexercised.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, axe unauthenticated is clean and authenticated artifact/job evidence is recorded, including final Disabled screenshot, but authenticated WCAG and cancel runtime remain.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, unauthenticated axe is clean, authenticated Overview axe is 0/25/0 and artifact/job evidence is recorded, but all-route axe and cancel runtime remain.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
@@ -60,7 +60,7 @@
 - [x] Implement explicit admin-only/role-based authorization paths and tests for admin versus user behavior; owner scoping is enforced in server helpers and remains subject to database-backed integration proof.
 - [x] Clarify auth design and verify the browser source/build surface contains no readable API keys/provider secrets or session token values; cookie-only auth, full browser-surface scan, and regression test pass. Deployed runtime trace remains a stated limitation.
 - [x] Add consistent sanitized error handling and audit coverage for every dashboard mutation, including logout and database/provider/service failures; targeted fault-path tests now cover all dashboard mutation families, including sessions.send DB/provider failures. Exhaustive provider permutations remain outside scope.
-- [ ] Implement and verify all session cancel/unknown lifecycle states; pure matrix/router tests and UI/audit wiring pass, but live attempts #60001 and #120001 completed before Cancel could be issued.
+- [ ] Implement and verify all session cancel/unknown lifecycle states; pure matrix/router tests and UI/audit wiring pass, but live attempts #60001, #120001 and #150001 completed before Cancel could be issued.
 - [x] Persist and validate selected models server-side and expose only safe catalog fields to the client; admin selection authorization is contract-tested.
 - [x] Add actual scheduled-job and capability enable/disable UI controls with frontend/source verification; interactive verification remains a documented limitation.
 - [x] Add job-run list/query endpoint and UI for failure, timeout, cancelled, and unknown records; populated runtime/test fixtures remain unavailable for full status-matrix verification.
@@ -73,7 +73,7 @@
 - [x] Validate models.select against the live server catalog before persistence and add invalid-model plus authorization contract tests; owner-scoped persistence remains database-integration scoped.
 - [x] Add router-level cancel tests for distinct queued/running active cancellation and no-op terminal/unknown statuses; DB-backed integration remains outside the current test harness.
 - [x] Add an explicit unknown-session-status router test proving cancel preserves it and records a no-op audit event.
-- [ ] Capture authenticated interactive evidence for cancel pending/error/audit/state behavior; session #120001 showed queued user state but completed before the Cancel mutation became available, so cancellation remains unproven.
+- [ ] Capture authenticated interactive evidence for cancel pending/error/audit/state behavior; session #150001 was observed by an automated 10-second poll, but completed before Cancel appeared, so cancellation remains unproven.
 - [x] Add distinct router-level queued->cancelled and running->cancelled tests instead of a generic changed=true case; suite passes with both cases plus terminal/unknown no-op cases.
 - [x] Fail closed when models.select persistence returns null and audit the failure; dedicated fault-path test passes.
 - [x] Add fault-path contract coverage for sanitized model persistence errors and failed audit status; broad injected failure matrix remains a future expansion.
@@ -89,15 +89,15 @@
 - [x] Fix New session flow: clicking the Overview CTA focuses and scrolls to the accessible server-backed command form instead of routing to an empty Sessions view; authenticated browser verified.
 - [x] Refresh session list and select the created session after successful command submission; authenticated network/browser evidence reconciled session #1, completed status, and message history after the stale-query fix.
 - [x] Run a fresh authenticated command after the stale-query fix and verify automatic navigation to Sessions with the new session selected and history visible without reload or manual click; end-to-end browser evidence passed for session #30001.
-- [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes; two attempts completed before the action was available.
+- [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes; three controlled attempts completed before the action was available.
 - [x] Create one safe owner-scoped artifact and one safe owner-scoped scheduled job through explicit dashboard forms, then verify artifact Preview/Download, job Disable/Enable and empty Runs state without fake customer data.
 - [x] Run automated accessibility checks for the unauthenticated surface and source contracts; Playwright + axe reports zero violations and 3 accessibility contract assertions pass.
-- [ ] Complete automated accessibility coverage for authenticated dashboard routes, including labels, focus order, contrast and reduced-motion behavior; connected-browser axe reports 0 violations/22 passes, but 1 gradient-related color-contrast incomplete result remains and external storage-state harness execution is not reproducible yet.
+- [ ] Complete automated accessibility coverage for all authenticated dashboard routes, including labels, focus order, contrast and reduced-motion behavior; authenticated Overview axe now reports 0 violations/25 passes/0 incomplete, while all-route repetition and standalone storage-state execution remain.
 - [x] Create one safe owner-scoped artifact and one safe owner-scoped scheduled job through the explicit dashboard forms; artifact register/Preview/Download and job create/Disable/Enable/Runs empty-state were verified end-to-end without fake customer data.
-- [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes; two attempts completed before the action was available.
+- [ ] Run authenticated cancel-flow testing against a real queued/running session and verify pending, success/no-op, error and audit outcomes; three controlled attempts completed before the action was available.
 - [x] Reconcile the stale Vite parser error reported at Home.tsx line 104; current source is valid, restart boot is clean, typecheck passes, 34 tests pass and production build succeeds.
 - [x] Fix session list row semantics so the active-session Cancel control is not nested inside a `<button>`; rows now use keyboard-accessible role=button semantics, child Cancel remains a real button, and browser smoke/typecheck/tests/build pass.
 - [ ] Add and verify an authenticated axe harness that accepts an external Playwright storage-state file without embedding cookies/tokens; connected-browser axe passed with 0 violations, but the standalone storage-state harness has not been run with a real state file.
 - [x] Fix authenticated landmark regression: SidebarInset supplies the single main landmark; `#main-content` is now a focusable DIV, skip-link target remains valid, `mainCount=1`, and nested buttons remain zero in authenticated DOM inspection.
 - [x] Fix authenticated axe `button-name` violation: the model-options icon button in Home.tsx now has `aria-label="More model options"`; authenticated axe rerun reports zero violations.
-- [ ] Make dashboard gradient contrast auditable: decorative gradient was moved to a pseudo-layer and axe rerun still reports 0 violations but 36 contrast nodes incomplete; a deterministic contrast proof or further visual-token adjustment remains.
+- [x] Make dashboard contrast auditable: decorative gradients were replaced with opaque backgrounds/inset shadow and contrast tokens were raised; authenticated axe now reports 0 violations, 25 passes and 0 incomplete results.
