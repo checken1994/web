@@ -52,7 +52,7 @@
 - [x] Add actor, action, target, status, timestamp, correlation ID, and sanitized metadata fields.
 - [x] Add server tests for authorization and secret non-exposure; frontend browser-surface regression and targeted mutation/lifecycle coverage are present, with 9 test files/34 tests passing.
 - [ ] Add frontend verification for desktop/mobile navigation and critical flows; session/model/audit, artifact register/Preview/Download and job create/Disable/Enable/Runs are browser-verified, including user screenshot confirmation that the temporary job ended Disabled; cancel runtime remains unexercised.
-- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check/build pass, 9 files/34 tests pass, unauthenticated axe is clean, authenticated Overview axe is 0/25/0 and artifact/job evidence is recorded, but all-route axe and cancel runtime remain.
+- [ ] Run typecheck, unit tests, build, accessibility review, and security review before first delivery; latest check, 9 files/35 tests and production build pass, connected-browser axe is clean across routes and artifact/job evidence is recorded, but state-backed harness execution and live cancel remain unproven.
 - [x] Save a checkpoint after all items with completed evidence were marked [x]; remaining unproven runtime/interactive items remain explicitly pending.
 
 ## Follow-up gaps found by verification
@@ -104,3 +104,4 @@
 - [x] Fix authenticated axe contrast violation for the AI model `Routing` label by raising the model-stat token; Models and the complete authenticated route sweep now report zero violations.
 - [x] Add a committed authenticated DOM accessibility harness for Overview, Sessions, Agents, Models, Artifacts, Jobs and Audit; it accepts external storage-state, runs axe/name/tabindex checks, emulates reduced-motion and performs real Tab traversal, and fails closed when state is absent. Syntax/check/35-test evidence passes.
 - [ ] Execute the committed reduced-motion and real keyboard traversal checks per authenticated route with a real external storage-state file; implementation is complete, but no state file is available in this sandbox.
+- [x] Expose the committed authenticated accessibility harness through the `audit:a11y:authenticated` package script with explicit `A11Y_STORAGE_STATE` requirements; check/test/build pass and the script fails closed when state is absent.
