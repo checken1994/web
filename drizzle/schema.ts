@@ -124,6 +124,32 @@ export const auditActivities = mysqlTable("audit_activities", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({ ownerIdx: index("audit_activities_owner_idx").on(table.ownerId), createdIdx: index("audit_activities_created_idx").on(table.createdAt) }));
 
+export const pcBridges = mysqlTable("pc_bridges", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  bridgeId: varchar("bridgeId", { length: 80 }).notNull().unique(),
+  credentialHash: varchar("credentialHash", { length: 128 }).notNull(),
+  status: mysqlEnum("status", ["active", "revoked"]).default("active").notNull(),
+  lastSeenAt: timestamp("lastSeenAt"),
+  lastSequence: int("lastSequence").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ ownerIdx: index("pc_bridges_owner_idx").on(table.ownerId), bridgeIdx: index("pc_bridges_bridge_idx").on(table.bridgeId) }));
+
+export const pcBridgeEvents = mysqlTable("pc_bridge_events", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("ownerId").notNull(),
+  bridgeId: varchar("bridgeId", { length: 80 }).notNull(),
+  eventId: varchar("eventId", { length: 120 }).notNull().unique(),
+  eventType: varchar("eventType", { length: 120 }).notNull(),
+  sequence: int("sequence").notNull(),
+  schemaVersion: varchar("schemaVersion", { length: 20 }).notNull(),
+  occurredAt: timestamp("occurredAt").notNull(),
+  payload: json("payload").notNull(),
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+}, (table) => ({ ownerIdx: index("pc_bridge_events_owner_idx").on(table.ownerId), bridgeSeqIdx: index("pc_bridge_events_bridge_seq_idx").on(table.bridgeId, table.sequence) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ControlSession = typeof sessions.$inferSelect;

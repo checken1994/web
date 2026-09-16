@@ -6,7 +6,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, cancelControlSession, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, createArtifactFromBytes, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard } from "./db";
+import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, cancelControlSession, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, createArtifactFromBytes, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard, listPcBridges, listPcBridgeEvents } from "./db";
 import { invokeLLM, listLLMModels } from "./_core/llm";
 import { agentCapabilities, scheduledJobs } from "../drizzle/schema";
 import { createHeartbeatJob, deleteHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
@@ -231,6 +231,10 @@ export const appRouter = router({
       }
     }),
     runs: protectedProcedure.input(z.object({ jobId: z.number().int().positive() })).query(({ ctx, input }) => listJobRuns(ownerId(ctx), input.jobId)),
+  }),
+  bridges: router({
+    list: protectedProcedure.query(({ ctx }) => listPcBridges(ownerId(ctx))),
+    events: protectedProcedure.input(z.object({ bridgeId: z.string().trim().min(3).max(80), afterSequence: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(500).default(100) })).query(({ ctx, input }) => listPcBridgeEvents(ownerId(ctx), input.bridgeId, input.afterSequence, input.limit)),
   }),
   audit: router({
     list: protectedProcedure.query(({ ctx }) => listAuditActivities(ownerId(ctx))),

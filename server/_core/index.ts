@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -9,9 +10,13 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { sdk } from "./sdk";
-import { getDb } from "../db";
+import { ensurePcBridge, getDb, getUserByOpenId, ingestPcBridgeEvent, recordAudit } from "../db";
 import { jobRuns, scheduledJobs } from "../../drizzle/schema";
 import { serveStatic, setupVite } from "./vite";
+import { ENV } from "./env";
+import { isValidBridgeToken } from "../bridgeAuth";
+import { realtimeEventSchema } from "../../shared/realtime";
+import { publishRealtimeEvent, subscribeRealtime } from "../realtime";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -40,6 +45,43 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  app.get("/api/realtime/stream", async (req, res) => {
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (!user?.id) return res.status(401).json({ error: "unauthorized" });
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      res.write(": connected\\n\\n");
+      const unsubscribe = subscribeRealtime(user.id, res);
+      req.on("close", unsubscribe);
+    } catch {
+      if (!res.headersSent) return res.status(401).json({ error: "unauthorized" });
+      res.end();
+    }
+  });
+  app.post("/api/bridge/events", async (req, res) => {
+    const candidate = req.header("x-scp-bridge-token");
+    if (!isValidBridgeToken(candidate)) return res.status(401).json({ error: "bridge-unauthorized" });
+    const parsed = realtimeEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "invalid-event" });
+    try {
+      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
+      const tokenHash = createHash("sha256").update(process.env.SCP_BRIDGE_SHARED_TOKEN ?? "").digest("hex");
+      const bridge = await ensurePcBridge({ ownerId: owner.id, bridgeId: parsed.data.bridgeId, name: "SCP PC bridge", credentialHash: tokenHash });
+      if (!bridge) return res.status(403).json({ error: "bridge-revoked" });
+      const result = await ingestPcBridgeEvent({ ...parsed.data, ownerId: owner.id, occurredAt: new Date(parsed.data.occurredAt) });
+      if (!result.accepted && result.reason === "stale-sequence") return res.status(409).json({ error: result.reason });
+      if (!result.accepted) return res.status(403).json({ error: result.reason });
+      await recordAudit({ ownerId: owner.id, actorOpenId: "pc-bridge", action: result.duplicate ? "bridge.event.duplicate" : "bridge.event.ingest", targetType: "pc_bridge", targetId: parsed.data.bridgeId, status: "completed", metadata: { eventType: parsed.data.eventType, sequence: parsed.data.sequence } });
+      if (!result.duplicate) publishRealtimeEvent(owner.id, parsed.data);
+      return res.json({ ok: true, duplicate: result.duplicate ?? false, sequence: parsed.data.sequence });
+    } catch {
+      return res.status(500).json({ error: "bridge-ingest-failed" });
+    }
+  });
   app.post("/api/scheduled/control-plane-job", async (req, res) => {
     const startedAt = new Date();
     let db: Awaited<ReturnType<typeof getDb>> = null;

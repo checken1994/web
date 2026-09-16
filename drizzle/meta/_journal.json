@@ -15,6 +15,13 @@
       "when": 1788686172366,
       "tag": "0001_sturdy_living_tribunal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1789471718458,
+      "tag": "0002_tense_luke_cage",
+      "breakpoints": true
     }
   ]
 }

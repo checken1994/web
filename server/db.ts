@@ -1,12 +1,13 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   agentCapabilities, agents, artifacts, auditActivities, InsertUser, jobRuns, modelRoutes,
-  scheduledJobs, sessionMessages, sessions, users,
+  pcBridgeEvents, pcBridges, scheduledJobs, sessionMessages, sessions, users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
+import { decideBridgeIngest, isVisibleReplayEvent } from "./bridgePolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -186,6 +187,53 @@ export async function countDashboard(ownerId: number) {
     db.select({ id: auditActivities.id }).from(auditActivities).where(eq(auditActivities.ownerId, ownerId)).limit(1000),
   ]);
   return { sessions: sessionRows.length, agents: agentRows.length, artifacts: artifactRows.length, jobs: jobRows.length, audits: auditRows.length };
+}
+
+export async function ensurePcBridge(input: { ownerId: number; bridgeId: string; name: string; credentialHash: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const current = await db.select({ id: pcBridges.id, ownerId: pcBridges.ownerId, bridgeId: pcBridges.bridgeId, status: pcBridges.status, lastSequence: pcBridges.lastSequence }).from(pcBridges).where(and(eq(pcBridges.bridgeId, input.bridgeId), eq(pcBridges.ownerId, input.ownerId))).limit(1);
+  if (current[0]) {
+    if (current[0].status === "revoked") return null;
+    await db.update(pcBridges).set({ lastSeenAt: new Date(), updatedAt: new Date() }).where(eq(pcBridges.id, current[0].id));
+    return { id: current[0].id, bridgeId: current[0].bridgeId, status: current[0].status, lastSequence: current[0].lastSequence };
+  }
+  const inserted = await db.insert(pcBridges).values({ ownerId: input.ownerId, name: input.name, bridgeId: input.bridgeId, credentialHash: input.credentialHash, status: "active", lastSeenAt: new Date() });
+  return { id: Number(inserted[0].insertId), bridgeId: input.bridgeId, status: "active" as const, lastSequence: 0 };
+}
+
+export async function ingestPcBridgeEvent(input: {
+  ownerId: number;
+  bridgeId: string;
+  eventId: string;
+  eventType: string;
+  sequence: number;
+  schemaVersion: string;
+  occurredAt: Date;
+  payload: Record<string, unknown>;
+}) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const bridge = await db.select({ id: pcBridges.id, status: pcBridges.status, lastSequence: pcBridges.lastSequence }).from(pcBridges).where(and(eq(pcBridges.bridgeId, input.bridgeId), eq(pcBridges.ownerId, input.ownerId))).limit(1);
+  const duplicate = await db.select({ id: pcBridgeEvents.id }).from(pcBridgeEvents).where(eq(pcBridgeEvents.eventId, input.eventId)).limit(1);
+  const decision = decideBridgeIngest({ active: Boolean(bridge[0] && bridge[0].status === "active"), duplicate: Boolean(duplicate[0]), lastSequence: bridge[0]?.lastSequence ?? 0, incomingSequence: input.sequence });
+  if (!decision.accepted) return decision;
+  if (decision.duplicate) {
+    if (bridge[0]) await db.update(pcBridges).set({ lastSeenAt: new Date() }).where(eq(pcBridges.id, bridge[0].id));
+    return decision;
+  }
+  await db.insert(pcBridgeEvents).values(input);
+  await db.update(pcBridges).set({ lastSequence: input.sequence, lastSeenAt: new Date(), updatedAt: new Date() }).where(eq(pcBridges.id, bridge[0].id));
+  return { accepted: true as const, duplicate: false as const };
+}
+
+export async function listPcBridgeEvents(ownerId: number, bridgeId: string, afterSequence = 0, limit = 100) {
+  const db = await getDb(); if (!db) return [];
+  const rows = await db.select({ eventId: pcBridgeEvents.eventId, ownerId: pcBridgeEvents.ownerId, bridgeId: pcBridgeEvents.bridgeId, eventType: pcBridgeEvents.eventType, sequence: pcBridgeEvents.sequence, schemaVersion: pcBridgeEvents.schemaVersion, occurredAt: pcBridgeEvents.occurredAt, payload: pcBridgeEvents.payload, receivedAt: pcBridgeEvents.receivedAt }).from(pcBridgeEvents).where(and(eq(pcBridgeEvents.ownerId, ownerId), eq(pcBridgeEvents.bridgeId, bridgeId), gt(pcBridgeEvents.sequence, afterSequence))).orderBy(pcBridgeEvents.sequence).limit(Math.min(Math.max(limit, 1), 500));
+  return rows.filter((row) => isVisibleReplayEvent({ eventOwnerId: row.ownerId, eventBridgeId: row.bridgeId, requestedOwnerId: ownerId, requestedBridgeId: bridgeId, sequence: row.sequence, afterSequence })).map(({ ownerId: _ownerId, ...row }) => row);
+}
+
+export async function listPcBridges(ownerId: number) {
+  const db = await getDb(); if (!db) return [];
+  return db.select({ id: pcBridges.id, bridgeId: pcBridges.bridgeId, name: pcBridges.name, status: pcBridges.status, lastSeenAt: pcBridges.lastSeenAt, lastSequence: pcBridges.lastSequence, createdAt: pcBridges.createdAt, updatedAt: pcBridges.updatedAt }).from(pcBridges).where(eq(pcBridges.ownerId, ownerId)).orderBy(desc(pcBridges.updatedAt)).limit(20);
 }
 
 export { jobRuns };

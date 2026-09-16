@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
+import type { RealtimeEvent } from "@shared/realtime";
 import { startLogin } from "@/const";
 import {
   Activity, Bot, CheckCircle2, ChevronRight, CircleDot, Clock3, Command,
@@ -89,6 +90,31 @@ export default function Home() {
   const artifactQuery = trpc.artifacts.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const jobQuery = trpc.jobs.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const auditQuery = trpc.audit.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const bridgeQuery = trpc.bridges.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const source = new EventSource("/api/realtime/stream");
+    const handler: EventListener = (event) => {
+      try {
+        const parsed = JSON.parse((event as MessageEvent<string>).data) as RealtimeEvent;
+        if (!parsed.eventId || !parsed.bridgeId || typeof parsed.sequence !== "number") return;
+        setRealtimeEvents((current) => [parsed, ...current.filter((item) => item.eventId !== parsed.eventId)].slice(0, 20));
+        setRealtimeStatus("live");
+      } catch {
+        setRealtimeStatus("offline");
+      }
+    };
+    const eventTypes = ["heartbeat", "session.status", "agent.status", "artifact.ready", "job.status", "audit.activity"];
+    source.onopen = () => setRealtimeStatus("live");
+    source.onerror = () => setRealtimeStatus("offline");
+    eventTypes.forEach((eventType) => source.addEventListener(eventType, handler));
+    return () => {
+      eventTypes.forEach((eventType) => source.removeEventListener(eventType, handler));
+      source.close();
+    };
+  }, [isAuthenticated]);
   const historyQuery = trpc.sessions.history.useQuery({ sessionId: selectedSessionId ?? 0 }, { enabled: isAuthenticated && selectedSessionId !== null, retry: false });
   const jobRunsQuery = trpc.jobs.runs.useQuery({ jobId: selectedJobId ?? 0 }, { enabled: isAuthenticated && selectedJobId !== null, retry: false });
   const createSession = trpc.sessions.create.useMutation();
@@ -147,6 +173,8 @@ export default function Home() {
   const serverArtifacts = artifactQuery.data ?? [];
   const serverJobs = jobQuery.data ?? [];
   const serverAudits = auditQuery.data ?? [];
+  const latestRealtimeEvent = realtimeEvents[0];
+  const bridge = bridgeQuery.data?.[0];
   const serverCapabilities = capabilityQuery.data ?? [];
   const retryLastCommand = async () => {
     if (selectedSessionId === null || !historyQuery.data) return;
@@ -217,6 +245,7 @@ export default function Home() {
         <div className="hero-row"><div><p className="eyebrow accent-eyebrow">THURSDAY · 05 SEP 2026</p><h2 id="overview-heading">Good to see you, {displayName.split(" ")[0]}.</h2><p className="hero-copy">Your control plane is watching the boundary between intent and action.</p></div><Button className="primary-button" onClick={() => { const input = document.getElementById("command-input"); input?.scrollIntoView({ behavior: "smooth", block: "center" }); input?.focus(); }}><Plus size={16} /> New session</Button></div>
         {summary.isError && <div className="dashboard-error" role="alert" aria-live="polite">Unable to load the server summary. Check your session and try again.</div>}
         <div className="metrics-grid"><MetricCard label="Active sessions" value={summary.data ? String(summary.data.sessions).padStart(2, "0") : "—"} detail="server-synced sessions" icon={MessageSquare} tone="cyan" /><MetricCard label="Agents online" value={summary.data ? String(summary.data.agents).padStart(2, "0") : "—"} detail="owner-scoped registry" icon={Bot} tone="violet" /><MetricCard label="Evidence artifacts" value={summary.data ? String(summary.data.artifacts).padStart(2, "0") : "—"} detail="metadata and provenance" icon={ShieldCheck} tone="green" /><MetricCard label="Scheduled jobs" value={summary.data ? String(summary.data.jobs).padStart(2, "0") : "—"} detail="Heartbeat-backed schedules" icon={Clock3} tone="amber" /></div>
+        <Card className="panel-card bridge-status-card"><CardContent className="p-5"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow">PC BRIDGE</p><h3>{bridge?.name ?? "Waiting for SCP on PC"}</h3><p className="muted">Outbound-only realtime channel · no browser token</p></div><Badge className="badge-dark"><StatusDot tone={realtimeStatus === "live" ? "green" : realtimeStatus === "connecting" ? "amber" : "slate"} /> {realtimeStatus}</Badge></div><div className="bridge-status-meta"><span>Bridge {bridge?.bridgeId ?? "not seen"}</span><span>Sequence {latestRealtimeEvent?.sequence ?? bridge?.lastSequence ?? "—"}</span><span>Last event {latestRealtimeEvent ? new Date(latestRealtimeEvent.occurredAt).toLocaleTimeString() : bridge?.lastSeenAt ? new Date(bridge.lastSeenAt).toLocaleTimeString() : "—"}</span></div></CardContent></Card>
         <div className="main-grid"><Card className="panel-card session-panel"><CardHeader className="panel-header"><div><p className="eyebrow">LIVE OPERATIONS</p><CardTitle>Recent sessions</CardTitle></div><Button variant="ghost" size="sm" className="quiet-button" onClick={() => setActive("sessions")}>View all <ChevronRight size={14} /></Button></CardHeader><CardContent className="p-0"><div className="list-stack">{serverSessions.slice(0, 3).map((session) => { const Icon = session.icon; return <button className="list-row" key={session.id} onClick={() => { setActive("sessions"); setSelectedSessionId(session.id); }}><span className="row-icon"><Icon size={16} /></span><span className="row-main"><strong>{session.title}</strong><small>{session.meta}</small></span><span className={`status-badge status-${session.status.toLowerCase()}`}><StatusDot tone={session.status === "Running" ? "green" : session.status === "Unknown" ? "amber" : "cyan"} />{session.status}</span><small className="row-time">{session.time}</small><ChevronRight size={15} className="row-chevron" /></button>; })}</div></CardContent></Card>
           <Card className="panel-card command-panel"><CardHeader className="panel-header"><div><p className="eyebrow">SECURE COMMAND</p><CardTitle>Ask the control plane</CardTitle></div><Badge className="badge-dark"><KeyRound size={12} /> server-side</Badge></CardHeader><CardContent><div className="command-box"><div className="command-line"><span className="prompt">scp@remote ›</span><label htmlFor="command-input" className="sr-only">Describe a task for the control plane</label><Input id="command-input" value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Describe a task to verify…" aria-invalid={Boolean(commandError)} aria-describedby={commandError ? "command-error" : undefined} /></div><Button size="sm" className="primary-button" onClick={submitCommand} disabled={createSession.isPending || sendSession.isPending}><Play size={14} /> {createSession.isPending || sendSession.isPending ? "Running…" : "Run"}</Button></div>{commandError && <p id="command-error" className="dashboard-error" role="alert">{commandError}</p>}<p className="command-help"><Zap size={13} /> Every command is authorized, journaled and assigned a postcondition.</p></CardContent></Card></div>
         <div className="bottom-grid"><Card className="panel-card"><CardHeader className="panel-header"><div><p className="eyebrow">AGENT REGISTRY</p><CardTitle>Capability posture</CardTitle></div><Button variant="ghost" size="sm" className="quiet-button" onClick={() => setActive("agents")}>Manage <ChevronRight size={14} /></Button></CardHeader><CardContent><div className="agent-compact-list">{filteredAgents.slice(0, 3).map((agent) => <div className="agent-compact" key={agent.name}><span className="agent-avatar"><Bot size={15} /></span><span><strong>{agent.name}</strong><small>{agent.scope}</small></span><span className="agent-status"><StatusDot tone={agent.tone} />{agent.status}</span></div>)}</div></CardContent></Card><Card className="panel-card"><CardHeader className="panel-header"><div><p className="eyebrow">MODEL ROUTER</p><CardTitle>Preferred model</CardTitle></div><Button variant="ghost" size="icon" className="icon-button" aria-label="More model options"><MoreHorizontal size={17} /></Button></CardHeader><CardContent><div className="model-select"><Sparkles size={18} /><select value={selectedModel} onChange={(event) => chooseModel(event.target.value)} aria-label="Preferred AI model">{serverModels.map((model) => <option key={model.name}>{model.name}</option>)}</select><ChevronRight size={16} /></div><p className="metric-detail model-footnote">Requests stay server-side. Provider credentials never enter the browser.</p></CardContent></Card></div>

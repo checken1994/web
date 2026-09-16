@@ -105,3 +105,19 @@
 - [x] Add a committed authenticated DOM accessibility harness for Overview, Sessions, Agents, Models, Artifacts, Jobs and Audit; it accepts external storage-state, runs axe/name/tabindex checks, emulates reduced-motion and performs real Tab traversal, and fails closed when state is absent. Syntax/check/35-test evidence passes.
 - [ ] Execute the committed reduced-motion and real keyboard traversal checks per authenticated route with a real external storage-state file; implementation is complete, but no state file is available in this sandbox.
 - [x] Expose the committed authenticated accessibility harness through the `audit:a11y:authenticated` package script with explicit `A11Y_STORAGE_STATE` requirements; check/test/build pass and the script fails closed when state is absent.
+- [x] Define a secure PC-to-web realtime transport with backend shared-token identity, outbound-only HTTPS bridge, heartbeat, reconnect/backoff and replay-safe event IDs; design is documented in docs/realtime-bridge.md.
+- [x] Add a PC SCP bridge/agent contract that publishes sanitized allowlisted status/session/audit/job events, sequence and eventId, with token/raw-secret non-exposure tests.
+- [x] Add backend bridge ingestion, timing-safe authorization, owner-scoped persistence/replay, idempotency and authenticated SSE fan-out; check/build pass.
+- [x] Wire dashboard SSE subscription with connecting/live/offline state, bridge identity, sequence and last-event timestamp; no browser token is used.
+- [x] Add realtime contract/security coverage for token fail-closed behavior, envelope validation, duplicate-event idempotency, owner-scoped replay and secret-field rejection; 11 files/39 tests pass.
+- [ ] Run an end-to-end realtime test with SCP running on the connected PC and save evidence.
+- [x] Add targeted tests for bridge event duplicate ingest, stale-sequence rejection and owner-scoped bridges.events replay/list behavior; focused policy/replay contracts pass.
+- [x] Add focused verification for scripts/scp-pc-bridge.mjs proving allowlisted event emission, reconnect/backoff sequence persistence and no token/raw-secret logging; live caller jitter regression is covered.
+- [x] Run a fixture bridge round-trip from ingest to SSE/replay and record evidence without using the real PC token; owner-scoped SSE fan-out passes.
+- [x] Verify the live scp-pc-bridge.mjs retryDelay call site uses a numeric jitter sample and preserve bounded backoff.
+- [x] Run the complete web test suite, typecheck and production build after realtime hardening.
+- [x] Capture a same-SHA evidence note separating static/integration/fixture round-trip proof from unavailable live-PC proof.
+- [x] Add an integration test for bridge ingress/persistence/replay proving duplicate idempotency, stale-sequence rejection and owner-scoped list behavior on real helper wiring.
+- [x] Execute scp-pc-bridge.mjs in a mock environment to verify the live reconnect/backoff loop, persisted sequence resume and sanitized startup/retry logs.
+- [x] Extend the fixture test to cover ingress/persistence/replay plus SSE publish, not only in-memory fan-out.
+- [x] Write an evidence document that explicitly separates static, integration, fixture round-trip and unavailable live-PC proof on the current SHA.

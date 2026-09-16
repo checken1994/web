@@ -111,3 +111,8 @@ button { cursor: pointer; }
 
 /* Keep keyboard focus visible beneath sticky dashboard chrome. */
 :focus { scroll-margin-top: 80px; scroll-margin-bottom: 60px; }
+
+.bridge-status-card { border-color: #28485a !important; }
+.bridge-status-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; color: #86a0b8; font-size: .72rem; }
+.bridge-status-meta span { display: inline-flex; align-items: center; min-height: 24px; }
+@media (max-width: 560px) { .bridge-status-meta { gap: 6px 12px; } }
