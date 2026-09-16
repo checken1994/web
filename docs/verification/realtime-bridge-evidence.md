@@ -2,7 +2,7 @@
 
 ## Phạm vi và provenance
 
-Evidence này ghi nhận working tree của dự án `scp-control-plane-web` tại thời điểm kiểm chứng. Baseline Git trước patch là `f357f06fd94acba53d29ecf551990162f1b56c4c`; checkpoint sau khi lưu sẽ là provenance chính thức của patch. Không dùng token thật, cookie, API key hoặc dữ liệu người dùng thật trong các test bridge.
+Evidence này ghi nhận checkpoint `85dc986f` của dự án `scp-control-plane-web`. Baseline Git trước patch là `f357f06fd94acba53d29ecf551990162f1b56c4c`; checkpoint `85dc986f` là snapshot đã lưu của patch và test evidence bên dưới. Không dùng token thật, cookie, API key hoặc dữ liệu người dùng thật trong các test bridge.
 
 Theo nguyên tắc SCP, mọi kết luận dưới đây chỉ có nghĩa **PASS_WITHIN_SCOPE**. Chúng không chứng minh hệ thống production-ready tuyệt đối và không thay thế việc chạy bridge với SCP thật trên PC.
 
@@ -27,4 +27,4 @@ Payload realtime hiện từ chối key có dạng `token`, `secret`, `password`
 
 `VERIFIED_WITHIN_SCOPE` cho duplicate ingestion, stale-sequence rejection, owner-scoped replay, SSE fan-out, reconnect/backoff, sequence persistence và secret non-exposure trong test/mock environment.
 
-`UNPROVEN` cho end-to-end với SCP thật đang chạy trên PC người dùng, HTTPS Internet thật, database production, authenticated browser SSE với storage state thật và recovery sau crash của PC bridge thật. Vì vậy mục TODO “Run an end-to-end realtime test with SCP running on the connected PC” vẫn phải giữ unchecked.
+`UNPROVEN` cho end-to-end với SCP thật đang chạy trên PC người dùng, HTTPS Internet thật, database production, authenticated browser SSE với storage state thật và recovery sau crash của PC bridge thật. Probe read-only terminal PC trong lần kiểm chứng này bị timeout và đã được dừng an toàn; không được diễn giải thành SCP đang chạy hoặc đang lỗi. Vì vậy mục TODO “Run an end-to-end realtime test with SCP running on the connected PC” vẫn phải giữ unchecked.
