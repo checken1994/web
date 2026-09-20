@@ -17,7 +17,7 @@ const sanitizedPayloadSchema = z.record(z.string(), z.unknown()).superRefine((va
 export const realtimeEventSchema = z.object({
   eventId: z.string().trim().min(8).max(120),
   bridgeId: z.string().trim().min(3).max(80),
-  eventType: z.enum(["heartbeat", "session.status", "agent.status", "artifact.ready", "job.status", "audit.activity"]),
+  eventType: z.enum(["heartbeat", "session.status", "agent.status", "artifact.ready", "job.status", "audit.activity", "command.status"]),
   sequence: z.number().int().nonnegative(),
   schemaVersion: z.string().trim().min(1).max(20),
   occurredAt: z.string().datetime({ offset: true }),

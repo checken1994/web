@@ -22,6 +22,7 @@ import {
 const navItems = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "sessions", label: "Sessions", icon: MessageSquare },
+  { id: "commands", label: "Remote commands", icon: TerminalSquare },
   { id: "agents", label: "Bots & agents", icon: Bot },
   { id: "models", label: "AI models", icon: Sparkles },
   { id: "artifacts", label: "Artifacts", icon: FileCheck2 },
@@ -91,6 +92,7 @@ export default function Home() {
   const jobQuery = trpc.jobs.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const auditQuery = trpc.audit.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
   const bridgeQuery = trpc.bridges.list.useQuery(undefined, { enabled: isAuthenticated, retry: false });
+  const commandQuery = trpc.commands.list.useQuery(undefined, { enabled: isAuthenticated, retry: false, refetchInterval: 5000 });
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "offline">("connecting");
   useEffect(() => {
@@ -101,12 +103,13 @@ export default function Home() {
         const parsed = JSON.parse((event as MessageEvent<string>).data) as RealtimeEvent;
         if (!parsed.eventId || !parsed.bridgeId || typeof parsed.sequence !== "number") return;
         setRealtimeEvents((current) => [parsed, ...current.filter((item) => item.eventId !== parsed.eventId)].slice(0, 20));
+        if (parsed.eventType === "command.status") void commandQuery.refetch();
         setRealtimeStatus("live");
       } catch {
         setRealtimeStatus("offline");
       }
     };
-    const eventTypes = ["heartbeat", "session.status", "agent.status", "artifact.ready", "job.status", "audit.activity"];
+    const eventTypes = ["heartbeat", "session.status", "agent.status", "artifact.ready", "job.status", "audit.activity", "command.status"];
     source.onopen = () => setRealtimeStatus("live");
     source.onerror = () => setRealtimeStatus("offline");
     eventTypes.forEach((eventType) => source.addEventListener(eventType, handler));
@@ -126,11 +129,15 @@ export default function Home() {
   const createJob = trpc.jobs.create.useMutation();
   const registerArtifact = trpc.artifacts.register.useMutation();
   const accessArtifact = trpc.artifacts.access.useMutation();
+  const createRemoteCommand = trpc.commands.create.useMutation();
+  const cancelRemoteCommand = trpc.commands.cancel.useMutation();
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [jobName, setJobName] = useState("");
   const [jobCron, setJobCron] = useState("0 0 * * * *");
   const [jobDescription, setJobDescription] = useState("");
   const [artifactFile, setArtifactFile] = useState<File | null>(null);
+  const [commandCapability, setCommandCapability] = useState<"scp.health.read" | "scp.status.read">("scp.health.read");
+  const [commandResource, setCommandResource] = useState<"http://127.0.0.1:8002/health" | "http://127.0.0.1:8002/status">("http://127.0.0.1:8002/health");
 
   const chooseModel = async (model: string) => {
     setMutationError(null);
@@ -176,6 +183,7 @@ export default function Home() {
   const latestRealtimeEvent = realtimeEvents[0];
   const bridge = bridgeQuery.data?.[0];
   const serverCapabilities = capabilityQuery.data ?? [];
+  const serverCommands = commandQuery.data ?? [];
   const retryLastCommand = async () => {
     if (selectedSessionId === null || !historyQuery.data) return;
     const latest = historyQuery.data[historyQuery.data.length - 1];
@@ -226,6 +234,20 @@ export default function Home() {
     } catch (error) { setMutationError(error instanceof Error ? error.message : "Artifact registration failed."); }
   };
 
+  const queueRemoteCommand = async () => {
+    setMutationError(null);
+    try {
+      await createRemoteCommand.mutateAsync({ capability: commandCapability, resource: commandResource, expiresInSeconds: 60 });
+      await commandQuery.refetch();
+    } catch (error) { setMutationError(error instanceof Error ? error.message : "Remote command could not be queued."); }
+  };
+
+  const cancelRemoteCommandAction = async (commandId: string) => {
+    setMutationError(null);
+    try { await cancelRemoteCommand.mutateAsync({ commandId }); await commandQuery.refetch(); }
+    catch (error) { setMutationError(error instanceof Error ? error.message : "Remote command cancellation failed."); }
+  };
+
   const filteredAgents = useMemo(() => serverAgents.filter((agent) => `${agent.name} ${agent.type}`.toLowerCase().includes(query.toLowerCase())), [query, serverAgents]);
 
   if (loading) return <div className="page-loading"><Radio className="spin" size={18} /> Establishing secure session…</div>;
@@ -253,6 +275,10 @@ export default function Home() {
 
       {mutationError && <div className="content-stack pb-0"><div className="dashboard-error" role="alert">{mutationError}</div></div>}
       {active !== "overview" && <section className="content-stack detail-view" aria-labelledby="detail-heading"><div className="detail-toolbar"><div><p className="eyebrow">REMOTE OPERATIONS</p><h2 id="detail-heading">{navItems.find((item) => item.id === active)?.label}</h2></div><div className="search-box"><Search size={15} /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter records…" /></div></div>
+        {active === "commands" && <>
+          <Card className="panel-card"><CardHeader className="panel-header"><div><p className="eyebrow">PC CONTROL CHANNEL</p><CardTitle>Read-only command queue</CardTitle></div><Badge className="badge-dark"><ShieldCheck size={12} /> allowlist only</Badge></CardHeader><CardContent><div className="form-grid"><label htmlFor="command-capability">Capability<select id="command-capability" value={commandCapability} onChange={(event) => { const value = event.target.value as "scp.health.read" | "scp.status.read"; setCommandCapability(value); setCommandResource(value === "scp.health.read" ? "http://127.0.0.1:8002/health" : "http://127.0.0.1:8002/status"); }}><option value="scp.health.read">Read SCP health</option><option value="scp.status.read">Read SCP status</option></select></label><label htmlFor="command-resource">Local resource<input id="command-resource" value={commandResource} readOnly /></label><Button className="primary-button" onClick={queueRemoteCommand} disabled={createRemoteCommand.isPending || !bridge}>{createRemoteCommand.isPending ? "Queueing…" : "Queue on PC"}</Button></div><p className="muted">Only the two read-only resources are available. No shell, delete, upload, credential or arbitrary URL execution is exposed.</p>{!bridge && <p className="dashboard-error" role="alert">No active PC bridge is registered. Start the bridge before queueing a command.</p>}</CardContent></Card>
+          <Card className="panel-card"><CardHeader className="panel-header"><div><p className="eyebrow">COMMAND JOURNAL</p><CardTitle>Remote execution evidence</CardTitle></div><Badge className="badge-dark">auto-refresh 5s</Badge></CardHeader><CardContent className="p-0"><div className="list-stack">{commandQuery.isLoading && <div className="empty-card"><div className="empty-icon"><Radio className="spin" size={20} /></div><h3>Loading commands</h3><p>Reading the owner-scoped command journal…</p></div>}{commandQuery.isError && <div className="dashboard-error" role="alert">Unable to load remote commands. No command data is shown.</div>}{!commandQuery.isLoading && !commandQuery.isError && serverCommands.length === 0 && <div className="empty-card"><div className="empty-icon"><TerminalSquare size={20} /></div><h3>No remote commands</h3><p>Queue a read-only health or status check after the PC bridge is live.</p></div>}{serverCommands.map((remoteCommand) => <div className="list-row" key={remoteCommand.commandId}><span className="row-icon"><TerminalSquare size={16} /></span><span className="row-main"><strong>{remoteCommand.capability}</strong><small>{remoteCommand.resource} · {new Date(remoteCommand.createdAt).toLocaleString()}</small></span><span className="status-badge"><StatusDot tone={remoteCommand.status === "succeeded" ? "green" : remoteCommand.status === "failed" || remoteCommand.status === "unknown" ? "red" : "amber"} />{remoteCommand.status}</span>{["queued", "leased"].includes(remoteCommand.status) && <Button size="sm" variant="outline" onClick={() => cancelRemoteCommandAction(remoteCommand.commandId)} disabled={cancelRemoteCommand.isPending}>Cancel</Button>}</div>)}</div></CardContent></Card>
+        </>}
         {active === "sessions" && <Card className="panel-card"><CardContent className="p-0"><div className="list-stack">{sessionQuery.isLoading && <div className="empty-card"><div className="empty-icon"><Radio className="spin" size={20} /></div><h3>Loading sessions</h3><p>Reading owner-scoped session records…</p></div>}{sessionQuery.isError && <div className="dashboard-error" role="alert">Unable to load sessions. No session data is shown.</div>}{!sessionQuery.isLoading && !sessionQuery.isError && serverSessions.length === 0 && <div className="empty-card"><div className="empty-icon"><MessageSquare size={20} /></div><h3>No sessions yet</h3><p>Start a server-authorized command from the overview to create the first session.</p></div>}{serverSessions.map((session) => { const Icon = session.icon; return <div className="list-row" key={session.id} role="button" tabIndex={0} onClick={() => setSelectedSessionId(session.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedSessionId(session.id); } }}><span className="row-icon"><Icon size={16} /></span><span className="row-main"><strong>{session.title}</strong><small>{session.meta}</small></span><span className={`status-badge status-${session.status.toLowerCase()}`}><StatusDot tone={session.status === "Completed" ? "cyan" : session.status === "Running" ? "green" : session.status === "Failed" ? "red" : "amber"} />{session.status}</span><small className="row-time">{session.time}</small>{(session.status.toLowerCase() === "queued" || session.status.toLowerCase() === "running") && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); cancelSessionAction(session.id); }} disabled={cancelSession.isPending}>Cancel</Button>}<ChevronRight size={15} className="row-chevron" /></div>; })}</div></CardContent></Card>}
         {active === "sessions" && selectedSessionId !== null && <Card className="panel-card session-history"><CardHeader className="panel-header"><div><p className="eyebrow">SESSION HISTORY</p><CardTitle>Evidence trail for session #{selectedSessionId}</CardTitle></div><Button size="sm" variant="outline" onClick={retryLastCommand} disabled={sendSession.isPending || historyQuery.isLoading || historyQuery.data?.[historyQuery.data.length - 1]?.status !== "failed"}>Retry failed command</Button></CardHeader><CardContent>{historyQuery.isLoading && <p className="muted">Loading message history…</p>}{historyQuery.isError && <div className="dashboard-error" role="alert">Unable to load this session history.</div>}{!historyQuery.isLoading && !historyQuery.isError && (historyQuery.data?.length ?? 0) === 0 && <p className="muted">No messages recorded for this session.</p>}<div className="history-stack">{historyQuery.data?.map((message) => <div className={`history-message history-${message.role}`} key={message.id}><strong>{message.role}</strong><p>{message.content}</p><small>{message.status} · {new Date(message.createdAt).toLocaleString()}</small></div>)}</div></CardContent></Card>}
         {active === "agents" && <div className="cards-grid">{filteredAgents.map((agent) => <Card className="panel-card agent-card" key={agent.name}><CardContent><div className="agent-card-head"><span className="agent-avatar large"><Bot size={19} /></span><Badge variant="outline" className="outline-badge"><StatusDot tone={agent.tone} />{agent.status}</Badge></div><h3>{agent.name}</h3><p className="muted">{agent.type}</p><Separator /><p className="eyebrow">CAPABILITY SCOPE</p><code>{agent.scope}</code><Button variant="outline" className="w-full mt-5">Review permissions</Button></CardContent></Card>)}</div>}

@@ -150,6 +150,25 @@ export const pcBridgeEvents = mysqlTable("pc_bridge_events", {
   receivedAt: timestamp("receivedAt").defaultNow().notNull(),
 }, (table) => ({ ownerIdx: index("pc_bridge_events_owner_idx").on(table.ownerId), bridgeSeqIdx: index("pc_bridge_events_bridge_seq_idx").on(table.bridgeId, table.sequence) }));
 
+export const pcCommands = mysqlTable("pc_commands", {
+  id: int("id").autoincrement().primaryKey(),
+  commandId: varchar("commandId", { length: 36 }).notNull().unique(),
+  ownerId: int("ownerId").notNull(),
+  bridgeId: varchar("bridgeId", { length: 80 }).notNull(),
+  capability: varchar("capability", { length: 80 }).notNull(),
+  resource: varchar("resource", { length: 240 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 160 }).notNull().unique(),
+  status: mysqlEnum("status", ["queued", "leased", "dispatched", "running", "succeeded", "failed", "unknown", "cancelled", "expired"]).default("queued").notNull(),
+  leaseTokenHash: varchar("leaseTokenHash", { length: 128 }),
+  leaseExpiresAt: timestamp("leaseExpiresAt"),
+  expiresAt: timestamp("expiresAt").notNull(),
+  result: json("result"),
+  errorCode: varchar("errorCode", { length: 80 }),
+  correlationId: varchar("correlationId", { length: 80 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ ownerIdx: index("pc_commands_owner_idx").on(table.ownerId), bridgeStatusIdx: index("pc_commands_bridge_status_idx").on(table.bridgeId, table.status), expiryIdx: index("pc_commands_expiry_idx").on(table.expiresAt) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ControlSession = typeof sessions.$inferSelect;

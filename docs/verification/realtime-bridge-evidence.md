@@ -28,3 +28,27 @@ Payload realtime hiện từ chối key có dạng `token`, `secret`, `password`
 `VERIFIED_WITHIN_SCOPE` cho duplicate ingestion, stale-sequence rejection, owner-scoped replay, SSE fan-out, reconnect/backoff, sequence persistence và secret non-exposure trong test/mock environment.
 
 `UNPROVEN` cho end-to-end với SCP thật đang chạy trên PC người dùng, HTTPS Internet thật, database production, authenticated browser SSE với storage state thật và recovery sau crash của PC bridge thật. Probe read-only terminal PC trong lần kiểm chứng này bị timeout và đã được dừng an toàn; không được diễn giải thành SCP đang chạy hoặc đang lỗi. Vì vậy mục TODO “Run an end-to-end realtime test with SCP running on the connected PC” vẫn phải giữ unchecked.
+
+## Bidirectional command channel — evidence update
+
+The working tree now includes a bounded command channel. The first release slice deliberately exposes only two read-only capabilities: `scp.health.read` for `http://127.0.0.1:8002/health` and `scp.status.read` for `http://127.0.0.1:8002/status`. Arbitrary shell execution, arbitrary URLs, filesystem writes, deletion, credentials and package installation are not exposed.
+
+The backend stores owner-scoped commands in `pc_commands`, applies idempotency by `idempotencyKey`, leases commands to a specific bridge with a hashed lease token and expiry, fences stale result submissions, records terminal `unknown` when a lease expires, and rejects secret-like result fields. Authenticated tRPC procedures create/list/cancel commands. The outbound PC bridge polls `/api/bridge/commands/next`, executes only the local allowlist, and submits sanitized results to `/api/bridge/commands/result`. The dashboard displays a read-only queue, status journal, cancel action and five-second refresh; realtime `command.status` events trigger a refresh.
+
+Fresh verification on this working tree:
+
+| Check | Result | Meaning | Limit |
+|---|---|---|---|
+| Contract tests | `server/command.contract.test.ts`: 4 passed | Allowlist, deny-by-default, secret rejection and no arbitrary child-process execution | Static/contract scope |
+| Bridge child-process runtime | `server/command.bridge.runtime.test.ts`: 1 passed | Real bridge process polled a mock command, called the allowlisted health resource and submitted a sanitized result | Mock HTTP, not the user's PC |
+| DB lifecycle integration | `server/command.persistence.integration.test.ts`: 1 passed | Real DB helper path proved idempotency, lease assignment, result commit and duplicate-result behavior | Test database, not production failure/chaos |
+| Full suite | 17 files / 57 tests passed | Current working tree has no test failures | Does not prove live PC |
+| Typecheck | `pnpm check` exit 0 | TypeScript contracts compile | Not runtime proof |
+| Production build | `pnpm build` exit 0 | Client/server bundle builds | Existing >500 kB chunk advisory remains |
+| Preview | Authenticated `/?section=commands` screenshot | New queue/journal view renders and correctly shows no active bridge in the current preview | No command was queued because no live bridge was registered |
+
+### Current verdict
+
+`VERIFIED_WITHIN_SCOPE` for the read-only command contract, durable queue lifecycle, lease/idempotency behavior, secret-result rejection and mock bridge poll/execute/result round-trip.
+
+`UNPROVEN` for an end-to-end command executed by the real SCP process on the user's PC, real Internet/TLS path, production bridge credential, live cancellation after dispatch, crash recovery on the real PC and any capability beyond the two read-only health/status resources. The feature is therefore a safe command-channel foundation, not permission to run arbitrary remote commands.

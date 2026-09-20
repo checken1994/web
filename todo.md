@@ -121,3 +121,16 @@
 - [x] Execute scp-pc-bridge.mjs in a mock environment to verify the live reconnect/backoff loop, persisted sequence resume and sanitized startup/retry logs.
 - [x] Extend the fixture test to cover ingress/persistence/replay plus SSE publish, not only in-memory fan-out.
 - [x] Write an evidence document that explicitly separates static, integration, fixture round-trip and unavailable live-PC proof on the current SHA.
+
+
+## Bidirectional command channel follow-up
+
+- [x] Define a bounded command contract with read-only allowlist, deny-by-default resource validation, explicit expiry and terminal states.
+- [x] Add durable `pc_commands` schema and apply migration `drizzle/0003_polite_pride.sql` to the project database.
+- [x] Add owner-scoped create/list/cancel procedures with audit events.
+- [x] Add outbound bridge command poll/result endpoints with token authentication, lease fencing and sanitized result handling.
+- [x] Extend the PC bridge mock runtime to poll, execute only an allowlisted local health request and submit a result.
+- [x] Add dashboard Remote commands view with queue, status journal, cancel and explicit no-arbitrary-execution notice.
+- [x] Verify contract, DB integration, bridge runtime, full tests, typecheck and production build.
+- [ ] Run a real command through the bridge with SCP running on the connected PC and save postcondition evidence.
+- [ ] Add new side-effect capabilities only after a separate capability/security review, approval design and real runtime evidence.

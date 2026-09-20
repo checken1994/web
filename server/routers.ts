@@ -6,11 +6,12 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, cancelControlSession, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, createArtifactFromBytes, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard, listPcBridges, listPcBridgeEvents } from "./db";
+import { getDb, listControlSessions, createControlSession, addSessionMessage, addAssistantMessage, cancelControlSession, listAgents, listAgentCapabilities, listModelRoutes, upsertModelRoute, listArtifacts, createArtifactFromBytes, getOwnedArtifact, listScheduledJobs, listSessionMessages, listJobRuns, listAuditActivities, recordAudit, countDashboard, listPcBridges, listPcBridgeEvents, listPcCommands, createPcCommand, cancelPcCommand } from "./db";
 import { invokeLLM, listLLMModels } from "./_core/llm";
 import { agentCapabilities, scheduledJobs } from "../drizzle/schema";
 import { createHeartbeatJob, deleteHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { storageGetSignedUrl } from "./storage";
+import { commandCapabilitySchema, commandResourceSchema } from "../shared/command";
 
 const titleSchema = z.string().trim().min(1).max(180);
 
@@ -235,6 +236,37 @@ export const appRouter = router({
   bridges: router({
     list: protectedProcedure.query(({ ctx }) => listPcBridges(ownerId(ctx))),
     events: protectedProcedure.input(z.object({ bridgeId: z.string().trim().min(3).max(80), afterSequence: z.number().int().nonnegative().default(0), limit: z.number().int().positive().max(500).default(100) })).query(({ ctx, input }) => listPcBridgeEvents(ownerId(ctx), input.bridgeId, input.afterSequence, input.limit)),
+  }),
+  commands: router({
+    list: protectedProcedure.input(z.object({ bridgeId: z.string().trim().min(3).max(80).optional() }).optional()).query(({ ctx, input }) => listPcCommands(ownerId(ctx), input?.bridgeId)),
+    create: protectedProcedure.input(z.object({ capability: commandCapabilitySchema, resource: commandResourceSchema, bridgeId: z.string().trim().min(3).max(80).optional(), expiresInSeconds: z.number().int().min(10).max(300).default(60), idempotencyKey: z.string().trim().min(16).max(160).optional() })).mutation(async ({ ctx, input }) => {
+      const id = ownerId(ctx);
+      try {
+        const bridge = input.bridgeId ? (await listPcBridges(id)).find(item => item.bridgeId === input.bridgeId && item.status === "active") : (await listPcBridges(id)).find(item => item.status === "active");
+        if (!bridge) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "No active SCP PC bridge is available" });
+        const command = await createPcCommand({ ownerId: id, bridgeId: bridge.bridgeId, capability: input.capability, resource: input.resource, expiresInSeconds: input.expiresInSeconds, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() });
+        if (!command) throw new TRPCError({ code: "FORBIDDEN", message: "Command capability or bridge is not allowed" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "command.create", targetType: "pc_command", targetId: command.commandId, correlationId: command.correlationId, status: "accepted", metadata: { capability: command.capability, resource: command.resource, bridgeId: command.bridgeId } });
+        return command;
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "command.create", targetType: "pc_command", status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "command-store-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Command could not be queued" });
+      }
+    }),
+    cancel: protectedProcedure.input(z.object({ commandId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+      const id = ownerId(ctx);
+      try {
+        const result = await cancelPcCommand(id, input.commandId);
+        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Command not found" });
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: result.changed ? "command.cancel" : "command.cancel.noop", targetType: "pc_command", targetId: input.commandId, status: result.changed ? "completed" : "unknown", metadata: { currentStatus: result.status } });
+        return result;
+      } catch (error) {
+        await safeAudit({ ownerId: id, actorOpenId: ctx.user!.openId, action: "command.cancel", targetType: "pc_command", targetId: input.commandId, status: "failed", metadata: { reason: error instanceof TRPCError ? error.code : "command-store-failure" } });
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Command cancellation failed" });
+      }
+    }),
   }),
   audit: router({
     list: protectedProcedure.query(({ ctx }) => listAuditActivities(ownerId(ctx))),

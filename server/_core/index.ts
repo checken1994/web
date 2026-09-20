@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -10,13 +10,14 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { sdk } from "./sdk";
-import { ensurePcBridge, getDb, getUserByOpenId, ingestPcBridgeEvent, recordAudit } from "../db";
+import { claimPcCommand, ensurePcBridge, getDb, getUserByOpenId, ingestPcBridgeEvent, recordAudit, submitPcCommandResult } from "../db";
 import { jobRuns, scheduledJobs } from "../../drizzle/schema";
 import { serveStatic, setupVite } from "./vite";
 import { ENV } from "./env";
 import { isValidBridgeToken } from "../bridgeAuth";
 import { realtimeEventSchema } from "../../shared/realtime";
 import { publishRealtimeEvent, subscribeRealtime } from "../realtime";
+import { commandResultSchema } from "../../shared/command";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -80,6 +81,42 @@ async function startServer() {
       return res.json({ ok: true, duplicate: result.duplicate ?? false, sequence: parsed.data.sequence });
     } catch {
       return res.status(500).json({ error: "bridge-ingest-failed" });
+    }
+  });
+  app.get("/api/bridge/commands/next", async (req, res) => {
+    const candidate = req.header("x-scp-bridge-token");
+    const bridgeId = String(req.query.bridgeId ?? "");
+    if (!isValidBridgeToken(candidate) || !/^.{3,80}$/.test(bridgeId)) return res.status(401).json({ error: "bridge-unauthorized" });
+    try {
+      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
+      const tokenHash = createHash("sha256").update(process.env.SCP_BRIDGE_SHARED_TOKEN ?? "").digest("hex");
+      const bridge = await ensurePcBridge({ ownerId: owner.id, bridgeId, name: "SCP PC bridge", credentialHash: tokenHash });
+      if (!bridge) return res.status(403).json({ error: "bridge-revoked" });
+      const command = await claimPcCommand({ ownerId: owner.id, bridgeId, leaseSeconds: 30 });
+      if (!command) return res.status(204).end();
+      await recordAudit({ ownerId: owner.id, actorOpenId: "pc-bridge", action: "command.lease", targetType: "pc_command", targetId: command.commandId, correlationId: command.correlationId, status: "accepted", metadata: { bridgeId, capability: command.capability } });
+      return res.json({ commandId: command.commandId, ownerId: owner.id, bridgeId: command.bridgeId, capability: command.capability, resource: command.resource, idempotencyKey: command.idempotencyKey, leaseToken: command.leaseToken, leaseExpiresAt: command.leaseExpiresAt.toISOString(), expiresAt: command.expiresAt.toISOString() });
+    } catch {
+      return res.status(500).json({ error: "bridge-command-poll-failed" });
+    }
+  });
+  app.post("/api/bridge/commands/result", async (req, res) => {
+    const candidate = req.header("x-scp-bridge-token");
+    if (!isValidBridgeToken(candidate)) return res.status(401).json({ error: "bridge-unauthorized" });
+    const parsed = commandResultSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "invalid-command-result" });
+    try {
+      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
+      const result = await submitPcCommandResult({ ...parsed.data, ownerId: owner.id });
+      if (!result.accepted && result.reason === "secret-like-result") return res.status(400).json({ error: result.reason });
+      if (!result.accepted) return res.status(409).json({ error: result.reason });
+      await recordAudit({ ownerId: owner.id, actorOpenId: "pc-bridge", action: result.duplicate ? "command.result.duplicate" : "command.result", targetType: "pc_command", targetId: parsed.data.commandId, status: result.duplicate ? "completed" : parsed.data.status === "succeeded" ? "completed" : parsed.data.status === "failed" ? "failed" : "unknown", metadata: { bridgeId: parsed.data.bridgeId, status: parsed.data.status, errorCode: parsed.data.errorCode ?? null } });
+      publishRealtimeEvent(owner.id, { eventId: randomUUID(), bridgeId: parsed.data.bridgeId, eventType: "command.status", sequence: Date.now(), schemaVersion: "1", occurredAt: new Date().toISOString(), payload: { commandId: parsed.data.commandId, status: result.status, errorCode: parsed.data.errorCode ?? null } });
+      return res.json({ ok: true, duplicate: result.duplicate ?? false, status: result.status });
+    } catch {
+      return res.status(500).json({ error: "bridge-command-result-failed" });
     }
   });
   app.post("/api/scheduled/control-plane-job", async (req, res) => {

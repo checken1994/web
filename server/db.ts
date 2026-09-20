@@ -1,13 +1,14 @@
-import { and, desc, eq, gt } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { and, desc, eq, gt, lt, or } from "drizzle-orm";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   agentCapabilities, agents, artifacts, auditActivities, InsertUser, jobRuns, modelRoutes,
-  pcBridgeEvents, pcBridges, scheduledJobs, sessionMessages, sessions, users,
+  pcBridgeEvents, pcBridges, pcCommands, scheduledJobs, sessionMessages, sessions, users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { decideBridgeIngest, isVisibleReplayEvent } from "./bridgePolicy";
+import { containsSecretLikeValue, isAllowedCommand, type CommandCapability, type CommandStatus } from "../shared/command";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -234,6 +235,91 @@ export async function listPcBridgeEvents(ownerId: number, bridgeId: string, afte
 export async function listPcBridges(ownerId: number) {
   const db = await getDb(); if (!db) return [];
   return db.select({ id: pcBridges.id, bridgeId: pcBridges.bridgeId, name: pcBridges.name, status: pcBridges.status, lastSeenAt: pcBridges.lastSeenAt, lastSequence: pcBridges.lastSequence, createdAt: pcBridges.createdAt, updatedAt: pcBridges.updatedAt }).from(pcBridges).where(eq(pcBridges.ownerId, ownerId)).orderBy(desc(pcBridges.updatedAt)).limit(20);
+}
+
+function hashLeaseToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function sameHash(left: string | null | undefined, right: string) {
+  if (!left) return false;
+  const a = Buffer.from(left, "hex");
+  const b = Buffer.from(hashLeaseToken(right), "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function createPcCommand(input: {
+  ownerId: number;
+  bridgeId: string;
+  capability: CommandCapability;
+  resource: string;
+  expiresInSeconds: number;
+  idempotencyKey: string;
+}) {
+  if (!isAllowedCommand(input.capability, input.resource)) return null;
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const bridge = await db.select({ id: pcBridges.id, status: pcBridges.status }).from(pcBridges).where(and(eq(pcBridges.ownerId, input.ownerId), eq(pcBridges.bridgeId, input.bridgeId))).limit(1);
+  if (!bridge[0] || bridge[0].status !== "active") return null;
+  const existing = await db.select().from(pcCommands).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.idempotencyKey, input.idempotencyKey))).limit(1);
+  if (existing[0]) return existing[0];
+  const commandId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
+  const correlationId = crypto.randomUUID();
+  const inserted = await db.insert(pcCommands).values({ commandId, ownerId: input.ownerId, bridgeId: input.bridgeId, capability: input.capability, resource: input.resource, idempotencyKey: input.idempotencyKey, status: "queued", expiresAt, correlationId });
+  const rows = await db.select().from(pcCommands).where(eq(pcCommands.id, Number(inserted[0].insertId))).limit(1);
+  return rows[0];
+}
+
+export async function listPcCommands(ownerId: number, bridgeId?: string) {
+  const db = await getDb(); if (!db) return [];
+  const filters = bridgeId ? and(eq(pcCommands.ownerId, ownerId), eq(pcCommands.bridgeId, bridgeId)) : eq(pcCommands.ownerId, ownerId);
+  return db.select().from(pcCommands).where(filters).orderBy(desc(pcCommands.createdAt)).limit(100);
+}
+
+export async function claimPcCommand(input: { ownerId: number; bridgeId: string; leaseSeconds: number }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  await db.update(pcCommands).set({ status: "expired", errorCode: "command-expired", updatedAt: now }).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.bridgeId, input.bridgeId), eq(pcCommands.status, "queued"), lt(pcCommands.expiresAt, now)));
+  await db.update(pcCommands).set({ status: "unknown", errorCode: "lease-expired", updatedAt: now }).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.bridgeId, input.bridgeId), or(eq(pcCommands.status, "leased"), eq(pcCommands.status, "dispatched"), eq(pcCommands.status, "running")), lt(pcCommands.leaseExpiresAt, now)));
+  const candidate = await db.select().from(pcCommands).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.bridgeId, input.bridgeId), eq(pcCommands.status, "queued"), gt(pcCommands.expiresAt, now))).orderBy(pcCommands.createdAt).limit(1);
+  if (!candidate[0]) return null;
+  const leaseToken = randomBytes(32).toString("base64url");
+  const leaseExpiresAt = new Date(Date.now() + input.leaseSeconds * 1000);
+  const updated = await db.update(pcCommands).set({ status: "leased", leaseTokenHash: hashLeaseToken(leaseToken), leaseExpiresAt, updatedAt: new Date() }).where(and(eq(pcCommands.id, candidate[0].id), eq(pcCommands.status, "queued")));
+  if (!updated[0].affectedRows) return null;
+  return { ...candidate[0], status: "leased" as const, leaseToken, leaseExpiresAt };
+}
+
+export async function markPcCommandDispatched(input: { ownerId: number; commandId: string; bridgeId: string; leaseToken: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const current = await db.select().from(pcCommands).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.commandId, input.commandId), eq(pcCommands.bridgeId, input.bridgeId))).limit(1);
+  if (!current[0] || !sameHash(current[0].leaseTokenHash, input.leaseToken)) return false;
+  if (current[0].status !== "leased" || !current[0].leaseExpiresAt || current[0].leaseExpiresAt <= new Date()) return false;
+  await db.update(pcCommands).set({ status: "dispatched", updatedAt: new Date() }).where(and(eq(pcCommands.id, current[0].id), eq(pcCommands.status, "leased")));
+  return true;
+}
+
+export async function submitPcCommandResult(input: { ownerId: number; commandId: string; bridgeId: string; leaseToken: string; status: "succeeded" | "failed" | "unknown"; result?: Record<string, unknown>; errorCode?: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  if (input.result && containsSecretLikeValue(input.result)) return { accepted: false as const, reason: "secret-like-result" as const };
+  const current = await db.select().from(pcCommands).where(and(eq(pcCommands.ownerId, input.ownerId), eq(pcCommands.commandId, input.commandId), eq(pcCommands.bridgeId, input.bridgeId))).limit(1);
+  if (!current[0] || !sameHash(current[0].leaseTokenHash, input.leaseToken)) return { accepted: false as const, reason: "invalid-lease" as const };
+  if (["succeeded", "failed", "unknown", "cancelled", "expired"].includes(current[0].status)) return { accepted: true as const, duplicate: true as const, status: current[0].status };
+  if (!current[0].leaseExpiresAt || current[0].leaseExpiresAt <= new Date()) {
+    await db.update(pcCommands).set({ status: "unknown", errorCode: "lease-expired", updatedAt: new Date() }).where(eq(pcCommands.id, current[0].id));
+    return { accepted: false as const, reason: "stale-lease" as const };
+  }
+  await db.update(pcCommands).set({ status: input.status, result: input.result ?? null, errorCode: input.errorCode ?? null, updatedAt: new Date() }).where(and(eq(pcCommands.id, current[0].id), or(eq(pcCommands.status, "leased"), eq(pcCommands.status, "dispatched"), eq(pcCommands.status, "running"))));
+  return { accepted: true as const, duplicate: false as const, status: input.status };
+}
+
+export async function cancelPcCommand(ownerId: number, commandId: string) {
+  const db = await getDb(); if (!db) throw new Error("Database unavailable");
+  const current = await db.select({ id: pcCommands.id, status: pcCommands.status }).from(pcCommands).where(and(eq(pcCommands.ownerId, ownerId), eq(pcCommands.commandId, commandId))).limit(1);
+  if (!current[0]) return null;
+  if (["succeeded", "failed", "unknown", "cancelled", "expired"].includes(current[0].status)) return { commandId, status: current[0].status, changed: false };
+  await db.update(pcCommands).set({ status: "cancelled", updatedAt: new Date() }).where(and(eq(pcCommands.id, current[0].id), eq(pcCommands.ownerId, ownerId)));
+  return { commandId, status: "cancelled" as const, changed: true };
 }
 
 export { jobRuns };
