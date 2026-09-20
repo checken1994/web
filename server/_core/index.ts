@@ -10,10 +10,9 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { sdk } from "./sdk";
-import { claimPcCommand, ensurePcBridge, getDb, getUserByOpenId, ingestPcBridgeEvent, recordAudit, submitPcCommandResult } from "../db";
+import { claimPcCommand, ensurePcBridge, getBridgeOwner, getDb, ingestPcBridgeEvent, recordAudit, submitPcCommandResult } from "../db";
 import { jobRuns, scheduledJobs } from "../../drizzle/schema";
 import { serveStatic, setupVite } from "./vite";
-import { ENV } from "./env";
 import { isValidBridgeToken } from "../bridgeAuth";
 import { realtimeEventSchema } from "../../shared/realtime";
 import { publishRealtimeEvent, subscribeRealtime } from "../realtime";
@@ -68,7 +67,7 @@ async function startServer() {
     const parsed = realtimeEventSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "invalid-event" });
     try {
-      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      const owner = await getBridgeOwner();
       if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
       const tokenHash = createHash("sha256").update(process.env.SCP_BRIDGE_SHARED_TOKEN ?? "").digest("hex");
       const bridge = await ensurePcBridge({ ownerId: owner.id, bridgeId: parsed.data.bridgeId, name: "SCP PC bridge", credentialHash: tokenHash });
@@ -88,7 +87,7 @@ async function startServer() {
     const bridgeId = String(req.query.bridgeId ?? "");
     if (!isValidBridgeToken(candidate) || !/^.{3,80}$/.test(bridgeId)) return res.status(401).json({ error: "bridge-unauthorized" });
     try {
-      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      const owner = await getBridgeOwner();
       if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
       const tokenHash = createHash("sha256").update(process.env.SCP_BRIDGE_SHARED_TOKEN ?? "").digest("hex");
       const bridge = await ensurePcBridge({ ownerId: owner.id, bridgeId, name: "SCP PC bridge", credentialHash: tokenHash });
@@ -107,7 +106,7 @@ async function startServer() {
     const parsed = commandResultSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "invalid-command-result" });
     try {
-      const owner = await getUserByOpenId(ENV.ownerOpenId);
+      const owner = await getBridgeOwner();
       if (!owner) return res.status(503).json({ error: "bridge-owner-unavailable" });
       const result = await submitPcCommandResult({ ...parsed.data, ownerId: owner.id });
       if (!result.accepted && result.reason === "secret-like-result") return res.status(400).json({ error: result.reason });

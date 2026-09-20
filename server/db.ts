@@ -9,6 +9,7 @@ import { ENV } from "./_core/env";
 import { storagePut } from "./storage";
 import { decideBridgeIngest, isVisibleReplayEvent } from "./bridgePolicy";
 import { containsSecretLikeValue, isAllowedCommand, type CommandCapability, type CommandStatus } from "../shared/command";
+import { resolveBridgeOwner } from "./bridgeOwner";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -41,6 +42,15 @@ export async function getUserByOpenId(openId: string) {
   const db = await getDb(); if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
+}
+
+/** Resolve the configured owner, or a single-admin deployment fallback only. */
+export async function getBridgeOwner() {
+  const configuredOwner = ENV.ownerOpenId.trim();
+  if (configuredOwner) return getUserByOpenId(configuredOwner);
+  const db = await getDb(); if (!db) return undefined;
+  const admins = await db.select().from(users).where(eq(users.role, "admin")).limit(2);
+  return resolveBridgeOwner("", admins);
 }
 
 export async function listControlSessions(ownerId: number) {
