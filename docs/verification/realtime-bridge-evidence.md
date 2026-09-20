@@ -52,3 +52,12 @@ Fresh verification on this working tree:
 `VERIFIED_WITHIN_SCOPE` for the read-only command contract, durable queue lifecycle, lease/idempotency behavior, secret-result rejection and mock bridge poll/execute/result round-trip.
 
 `UNPROVEN` for an end-to-end command executed by the real SCP process on the user's PC, real Internet/TLS path, production bridge credential, live cancellation after dispatch, crash recovery on the real PC and any capability beyond the two read-only health/status resources. The feature is therefore a safe command-channel foundation, not permission to run arbitrary remote commands.
+
+
+## Live-PC heartbeat evidence — 2026-09-21
+
+A real SCP instance was started on the connected Windows PC using the main checkout and exposed only on loopback `127.0.0.1:8002`; its health endpoint returned HTTP 200. The bridge files on the PC matched the checked-in hashes, and the bridge process used the configured shared token without printing it. Before the owner-resolution fix, the deployed bridge endpoint returned HTTP 503 `bridge-owner-unavailable`; after fix checkpoint `466ff6dd`, a valid authenticated heartbeat returned HTTP 200.
+
+The PC bridge log then recorded `bridge-heartbeat-sent` for `minh-pc-primary` through sequence 203–214, proving a live outbound heartbeat loop from the connected PC to the deployed web control plane. This upgrades the realtime heartbeat gate to **VERIFIED for heartbeat ingestion and reconnect recovery**. It does not prove arbitrary command execution, because no real remote command was issued in this evidence cycle.
+
+The owner fix is fail-closed: `OWNER_OPEN_ID` remains authoritative when present; only a database containing exactly one admin may use the deployment fallback when the built-in owner variable is absent. Zero or multiple admins produce no bridge owner and preserve the 503 safety boundary. Policy tests, typecheck and targeted bridge tests passed before this live check.

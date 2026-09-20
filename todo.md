@@ -110,7 +110,7 @@
 - [x] Add backend bridge ingestion, timing-safe authorization, owner-scoped persistence/replay, idempotency and authenticated SSE fan-out; check/build pass.
 - [x] Wire dashboard SSE subscription with connecting/live/offline state, bridge identity, sequence and last-event timestamp; no browser token is used.
 - [x] Add realtime contract/security coverage for token fail-closed behavior, envelope validation, duplicate-event idempotency, owner-scoped replay and secret-field rejection; 11 files/39 tests pass.
-- [ ] Run an end-to-end realtime test with SCP running on the connected PC and save evidence.
+- [x] Run an end-to-end realtime heartbeat test with SCP running on the connected PC and save evidence; live command execution remains a separate open gate.
 - [x] Add targeted tests for bridge event duplicate ingest, stale-sequence rejection and owner-scoped bridges.events replay/list behavior; focused policy/replay contracts pass.
 - [x] Add focused verification for scripts/scp-pc-bridge.mjs proving allowlisted event emission, reconnect/backoff sequence persistence and no token/raw-secret logging; live caller jitter regression is covered.
 - [x] Run a fixture bridge round-trip from ingest to SSE/replay and record evidence without using the real PC token; owner-scoped SSE fan-out passes.
